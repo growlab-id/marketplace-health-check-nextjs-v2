@@ -994,7 +994,7 @@ export default function MarketplaceHealthCheck() {
                           Status Profit
                         </th>
                         <th className="p-4 text-sm font-bold text-slate-700">
-                          BEP {data.platform === "Shopee" ? "ROAS" : "ROI"}
+                          Estimasi BEP {data.platform === "Shopee" ? "ROAS" : "ROI"} (exc. ops cost)
                         </th>
                         <th className="p-4 text-sm font-bold text-slate-700">
                           Status Iklan
