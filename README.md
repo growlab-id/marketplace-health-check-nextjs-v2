@@ -1,66 +1,26 @@
-# Marketplace Health Check - Next.js
+# Marketplace Health Check v2 — Growlab Tools
 
-Versi Next.js dari Marketplace Health Check tool oleh Growlab. Dikonversi dari Express + Vite ke Next.js agar bisa di-deploy ke Vercel.
+Kuis tap-first untuk menghitung skor kesehatan toko marketplace (Shopee / TikTok Shop),
+dengan penyimpanan lead ke Google Sheets dan tracking Meta Pixel + Conversions API.
 
-## Cara Deploy ke Vercel
+## Arsitektur singkat
+- `components/MarketplaceHealthCheck.tsx` — seluruh funnel (platform → profiling → 4 pertanyaan → hasil), skoring, sesi 24 jam di localStorage, antrean offline.
+- `app/api/save-to-sheet/route.ts` — tulis ke Google Sheets (tab `partial_submit_v2` / `full_submit_v2`) lalu kirim event Lead / CompleteRegistration ke Meta CAPI.
+- `lib/fpixel.ts` — helper Meta Pixel browser (dedup via eventID).
+- `lib/capi.ts` — helper Meta Conversions API server (hash SHA-256, fbc/fbp, IP, UA).
 
-### 1. Push ke GitHub
+## Environment variables (set di Vercel)
+Lihat `.env.example`. Wajib: `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_PRIVATE_KEY`,
+`NEXT_PUBLIC_FB_PIXEL_ID`, `FB_PIXEL_ID`, `FB_CAPI_TOKEN`. Opsional: `SPREADSHEET_ID`.
+
+## Aturan baca Google Sheet
+Satu user = beberapa baris (satu per jawaban, snapshot penuh).
+Baris TERLENGKAP per `SubmissionId` = data terkini.
+Jumlah baris per `SubmissionId` = sampai pertanyaan mana user bertahan.
+
+## Development
 ```bash
-git init
-git add .
-git commit -m "Initial Next.js version"
-git remote add origin https://github.com/username/marketplace-health-check.git
-git push -u origin main
-```
-
-### 2. Import ke Vercel
-- Buka https://vercel.com/new
-- Import repository GitHub kamu
-- Vercel akan otomatis detect Next.js
-
-### 3. Set Environment Variables di Vercel
-Di dashboard Vercel → Settings → Environment Variables, tambahkan:
-
-| Key | Value |
-|-----|-------|
-| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Email service account kamu |
-| `GOOGLE_PRIVATE_KEY` | Private key (paste lengkap termasuk `-----BEGIN...-----`) |
-
-> ⚠️ **Penting:** Untuk `GOOGLE_PRIVATE_KEY`, paste langsung di Vercel dashboard — jangan pakai quotes tambahan. Vercel akan handle escape otomatis.
-
-### 4. Deploy!
-Vercel akan otomatis build dan deploy.
-
-## Development Lokal
-
-```bash
-# Install dependencies
 npm install
-
-# Copy env file
-cp .env.example .env.local
-# Edit .env.local dengan credentials Google kamu
-
-# Run development server
+cp .env.example .env.local   # isi nilainya
 npm run dev
 ```
-
-Buka http://localhost:3000
-
-## Kenapa Harus Next.js untuk Vercel?
-
-Vercel **tidak support** server Node.js yang berjalan terus-menerus (seperti Express). Yang didukung Vercel adalah:
-- **Frontend**: React/Next.js static pages
-- **Backend**: Serverless Functions (Next.js API Routes)
-
-Dengan Next.js App Router, file di `app/api/*/route.ts` otomatis menjadi Serverless Function di Vercel — tidak perlu konfigurasi tambahan.
-
-## Perubahan dari Versi Lama
-
-| Sebelum (Express + Vite) | Sekarang (Next.js) |
-|---|---|
-| `server.ts` (Express) | `app/api/save-to-sheet/route.ts` (Next.js API Route) |
-| `src/App.tsx` | `components/MarketplaceHealthCheck.tsx` |
-| `vite.config.ts` | Tidak diperlukan (Next.js built-in) |
-| `index.html` | `app/layout.tsx` |
-| Deploy butuh VPS/Docker | Deploy langsung ke Vercel ✅ |
