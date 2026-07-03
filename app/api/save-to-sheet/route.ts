@@ -29,57 +29,56 @@ async function ensureHeaders(
   requestId: string,
   expectedHeaders: string[],
 ) {
-  try {
-    if (sheet.columnCount < expectedHeaders.length) {
-      await sheet.resize({
-        rowCount: sheet.rowCount || 100,
-        columnCount: expectedHeaders.length
-      });
-    }
+  if (sheet.columnCount < expectedHeaders.length) {
+    await sheet.resize({
+      rowCount: sheet.rowCount || 100,
+      columnCount: expectedHeaders.length
+    });
+  }
 
+  // IMPORTANT: sheet.headerValues is a getter that THROWS when headers are
+  // not loaded (e.g. a manually-created empty tab). Never read it outside
+  // a try/catch — track the loaded headers in a local variable instead.
+  let headers: string[] = [];
+  try {
+    await sheet.loadHeaderRow();
+    headers = sheet.headerValues ?? [];
+  } catch {
+    console.log(`[${requestId}] No header row yet on "${sheet.title}".`);
+    headers = [];
+  }
+
+  if (headers.length === 0) {
+    await sheet.setHeaderRow(expectedHeaders);
     try {
       await sheet.loadHeaderRow();
+      headers = sheet.headerValues ?? [];
     } catch {
-      console.log(`[${requestId}] loadHeaderRow failed (normal if empty).`);
+      headers = [];
     }
+    if (headers.length === 0) {
+      throw new Error(`Failed to set headers for sheet "${sheet.title}".`);
+    }
+    return;
+  }
 
-    if (!sheet.headerValues || sheet.headerValues.length === 0) {
-      await sheet.setHeaderRow(expectedHeaders);
-      let attempts = 0;
-      while ((!sheet.headerValues || sheet.headerValues.length === 0) && attempts < 3) {
-        try { await sheet.loadHeaderRow(); } catch { /* ignore */ }
-        if (!sheet.headerValues || sheet.headerValues.length === 0) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-        attempts++;
-      }
+  // Schema migration: if the sheet already exists but is missing some of
+  // the expected columns (e.g. "GMV Answer" added later), append the
+  // missing headers at the END so existing data columns never shift.
+  const missing = expectedHeaders.filter((h) => !headers.includes(h));
+  if (missing.length > 0) {
+    const merged = [...headers, ...missing];
+    if (sheet.columnCount < merged.length) {
+      await sheet.resize({
+        rowCount: sheet.rowCount || 100,
+        columnCount: merged.length,
+      });
     }
-
-    if (!sheet.headerValues || sheet.headerValues.length === 0) {
-      throw new Error(`Failed to load headers for sheet "${sheet.title}".`);
-    }
-
-    // Schema migration: if the sheet already exists but is missing some of
-    // the expected columns (e.g. "GMV Answer" added later), append the
-    // missing headers at the END so existing data columns never shift.
-    const current: string[] = sheet.headerValues;
-    const missing = expectedHeaders.filter((h) => !current.includes(h));
-    if (missing.length > 0) {
-      const merged = [...current, ...missing];
-      if (sheet.columnCount < merged.length) {
-        await sheet.resize({
-          rowCount: sheet.rowCount || 100,
-          columnCount: merged.length,
-        });
-      }
-      await sheet.setHeaderRow(merged);
-      await sheet.loadHeaderRow();
-      console.log(
-        `[${requestId}] Extended "${sheet.title}" headers with: ${missing.join(", ")}`,
-      );
-    }
-  } catch (e: any) {
-    throw e;
+    await sheet.setHeaderRow(merged);
+    await sheet.loadHeaderRow();
+    console.log(
+      `[${requestId}] Extended "${sheet.title}" headers with: ${missing.join(", ")}`,
+    );
   }
 }
 
@@ -130,7 +129,12 @@ export async function POST(req: NextRequest) {
 
     let sheet = doc.sheetsByTitle[sheetName];
     if (!sheet) {
-      sheet = await doc.addSheet({ title: sheetName });
+      // Create the sheet WITH its headers in one step, so a brand-new tab
+      // never exists in a headerless state.
+      sheet = await doc.addSheet({
+        title: sheetName,
+        headerValues: isV2 ? EXPECTED_HEADERS_V2 : EXPECTED_HEADERS_V1,
+      });
     }
 
     await ensureHeaders(
