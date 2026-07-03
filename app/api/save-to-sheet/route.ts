@@ -3,7 +3,18 @@ import { GoogleSpreadsheet } from "google-spreadsheet";
 import { JWT } from "google-auth-library";
 import { sendCapiEvent } from "@/lib/capi";
 
-const SPREADSHEET_ID = "10gCm-fgHZ6eUY_-W0CGv-1JzFNtZDX7aeNdNUy24dnI";
+// Prefer the env var; fall back to the known ID so nothing breaks if unset.
+const SPREADSHEET_ID =
+  process.env.SPREADSHEET_ID || "10gCm-fgHZ6eUY_-W0CGv-1JzFNtZDX7aeNdNUy24dnI";
+
+// Only these sheets may be written. Anything else is rejected, so the open
+// endpoint can't be abused to create arbitrary tabs or fire fake CAPI events.
+const ALLOWED_SHEETS = new Set([
+  "partial_submit_v2",
+  "full_submit_v2",
+  "partial_submit",
+  "full_submit",
+]);
 
 // v1 (legacy form with per-product numbers) — kept for archival compatibility.
 const EXPECTED_HEADERS_V1 = [
@@ -101,6 +112,13 @@ export async function POST(req: NextRequest) {
     const isV2 = typeof sheetName === "string" && sheetName.endsWith("_v2");
     const isFull =
       typeof sheetName === "string" && sheetName.startsWith("full_submit");
+
+    if (typeof sheetName !== "string" || !ALLOWED_SHEETS.has(sheetName)) {
+      return NextResponse.json(
+        { error: "Invalid sheet name." },
+        { status: 400 },
+      );
+    }
 
     const serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
     let privateKey = process.env.GOOGLE_PRIVATE_KEY;
@@ -215,8 +233,9 @@ export async function POST(req: NextRequest) {
 
       const customData: Record<string, any> = {};
       if (isFull && typeof data.score === "number") {
-        customData.value = data.score;
-        customData.currency = "IDR";
+        // Health score 0–5 as a custom property — not `value`/`currency`,
+        // which Meta treats as monetary conversion value.
+        customData.score = data.score;
       }
 
       await sendCapiEvent({
