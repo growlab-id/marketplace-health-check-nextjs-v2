@@ -16,6 +16,11 @@ const ALLOWED_SHEETS = new Set([
   "full_submit",
 ]);
 
+// Cap string fields so oversized payloads can't blow past Google's
+// 50,000-character-per-cell limit (which would turn addRow into a 500).
+const cap = (v: unknown, max = 200): string =>
+  typeof v === "string" ? v.slice(0, max) : "";
+
 // v1 (legacy form with per-product numbers) — kept for archival compatibility.
 const EXPECTED_HEADERS_V1 = [
   "Timestamp", "SubmissionId", "Platform", "Name", "Shop Name", "Phone",
@@ -149,10 +154,19 @@ export async function POST(req: NextRequest) {
     if (!sheet) {
       // Create the sheet WITH its headers in one step, so a brand-new tab
       // never exists in a headerless state.
-      sheet = await doc.addSheet({
-        title: sheetName,
-        headerValues: isV2 ? EXPECTED_HEADERS_V2 : EXPECTED_HEADERS_V1,
-      });
+      try {
+        sheet = await doc.addSheet({
+          title: sheetName,
+          headerValues: isV2 ? EXPECTED_HEADERS_V2 : EXPECTED_HEADERS_V1,
+        });
+      } catch {
+        // Race: a concurrent request created it first. Reload and reuse.
+        await doc.loadInfo();
+        sheet = doc.sheetsByTitle[sheetName];
+        if (!sheet) {
+          throw new Error(`Failed to create or find sheet "${sheetName}".`);
+        }
+      }
     }
 
     await ensureHeaders(
@@ -163,11 +177,11 @@ export async function POST(req: NextRequest) {
 
     const common = {
       Timestamp: new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }),
-      SubmissionId: data.submissionId ?? "",
-      Platform: data.platform ?? "",
-      Name: data.userName ?? "",
-      "Shop Name": data.shopName ?? "",
-      Phone: data.phoneNumber ?? "",
+      SubmissionId: cap(data.submissionId, 64),
+      Platform: cap(data.platform, 30),
+      Name: cap(data.userName),
+      "Shop Name": cap(data.shopName),
+      Phone: cap(data.phoneNumber, 30),
     };
 
     const finalScore =
@@ -178,11 +192,11 @@ export async function POST(req: NextRequest) {
     const row = isV2
       ? {
           ...common,
-          "GMV Answer": data.gmvAnswer ?? "",
-          "Trend Answer": data.trendAnswer ?? "",
-          "Concentration Answer": data.concentrationAnswer ?? "",
-          "Margin Answer": data.marginAnswer ?? "",
-          "ROAS Answer": data.roasAnswer ?? "",
+          "GMV Answer": cap(data.gmvAnswer, 100),
+          "Trend Answer": cap(data.trendAnswer, 100),
+          "Concentration Answer": cap(data.concentrationAnswer, 100),
+          "Margin Answer": cap(data.marginAnswer, 100),
+          "ROAS Answer": cap(data.roasAnswer, 100),
           "Final Score": finalScore,
         }
       : {
