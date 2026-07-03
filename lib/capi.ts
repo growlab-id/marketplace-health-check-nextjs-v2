@@ -1,7 +1,7 @@
 // lib/capi.ts
 import crypto from "crypto";
 
-const GRAPH_VERSION = "v21.0";
+const GRAPH_VERSION = "v25.0";
 
 /** SHA-256 hash, lowercased & trimmed — required by Meta for user data. */
 function hash(value?: string | null): string | undefined {
