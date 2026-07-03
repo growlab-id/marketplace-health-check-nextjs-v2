@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleSpreadsheet } from "google-spreadsheet";
 import { JWT } from "google-auth-library";
 import { sendCapiEvent } from "@/lib/capi";
+import { sendTelegramAlert } from "@/lib/alert";
 
 // Prefer the env var; fall back to the known ID so nothing breaks if unset.
 const SPREADSHEET_ID =
@@ -273,6 +274,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error(`[${requestId}] Error:`, error);
+    await sendTelegramAlert(
+      "save-to-sheet ERROR",
+      `[${requestId}] ${error?.message || String(error)}`,
+    );
     return NextResponse.json(
       { error: error.message || "Failed to save data" },
       { status: 500 }
