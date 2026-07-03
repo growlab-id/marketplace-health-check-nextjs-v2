@@ -7,13 +7,6 @@ declare global {
   }
 }
 
-// Standard PageView
-export const pageview = () => {
-  if (typeof window !== "undefined" && window.fbq) {
-    window.fbq("track", "PageView");
-  }
-};
-
 /**
  * Track a standard/custom event.
  * eventID is passed so Meta can deduplicate this browser event
