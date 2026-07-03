@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   BarChart3,
   TrendingUp,
-  TrendingDown,
   Target,
   DollarSign,
   Star,
@@ -13,68 +12,230 @@ import {
   ChevronLeft,
   RefreshCcw,
   AlertCircle,
-  CheckCircle2,
+  AlertTriangle,
   Store,
   Zap,
   PieChart,
   Users,
+  Eye,
   MessageCircle,
-  Loader2,
 } from "lucide-react";
 import * as fbq from "@/lib/fpixel";
 
 type Platform = "Shopee" | "Tiktok";
 
-interface ProductData {
-  name: string;
-  revenue: number | null;
-  price: number | null;
-  hpp: number | null;
-  adSpend: number | null;
-  roasRoi: number | string | null;
+// ---------------------------------------------------------------------------
+// Quiz configuration
+// ---------------------------------------------------------------------------
+
+interface QuizOption {
+  id: string;
+  label: string; // full label shown on the button & stored in the sheet
+  short: string; // compact label for result cards
+  points: number;
 }
 
-interface FormData {
+const GMV_OPTIONS: QuizOption[] = [
+  { id: "di_bawah_5jt", label: "Kurang dari 5 juta", short: "< 5 jt", points: 0 },
+  { id: "5_10jt", label: "5 – 10 juta", short: "5–10 jt", points: 0 },
+  { id: "10_50jt", label: "10 – 50 juta", short: "10–50 jt", points: 0 },
+  { id: "50_100jt", label: "50 – 100 juta", short: "50–100 jt", points: 0 },
+  { id: "di_atas_100jt", label: "Di atas 100 juta", short: "> 100 jt", points: 0 },
+];
+
+const TREND_OPTIONS: QuizOption[] = [
+  {
+    id: "konsisten_naik",
+    label: "Konsisten naik tiap bulan sejak 3 bulan terakhir",
+    short: "Naik Stabil",
+    points: 1,
+  },
+  {
+    id: "konsisten_turun",
+    label: "Konsisten turun tiap bulan sejak 3 bulan terakhir",
+    short: "Menurun",
+    points: 0,
+  },
+  {
+    id: "fluktuatif",
+    label: "Naik turun tiap bulan / fluktuatif",
+    short: "Fluktuatif",
+    points: 0.5,
+  },
+  { id: "tidak_tahu", label: "Tidak tahu", short: "Tidak Diketahui", points: 0 },
+];
+
+const CONCENTRATION_OPTIONS: QuizOption[] = [
+  { id: "di_bawah_50", label: "Di bawah 50%", short: "< 50%", points: 1 },
+  { id: "50_75", label: "50 – 75%", short: "50–75%", points: 0.5 },
+  { id: "di_atas_75", label: "Di atas 75%", short: "> 75%", points: 0 },
+  { id: "tidak_tahu", label: "Tidak tahu", short: "Tidak Diketahui", points: 0 },
+];
+
+const MARGIN_OPTIONS: QuizOption[] = [
+  { id: "di_bawah_5", label: "Di bawah 5%", short: "< 5%", points: 0 },
+  { id: "5_10", label: "5 – 10%", short: "5–10%", points: 0.5 },
+  { id: "10_15", label: "10 – 15%", short: "10–15%", points: 1 },
+  { id: "15_20", label: "15 – 20%", short: "15–20%", points: 1.25 },
+  { id: "di_atas_20", label: "Di atas 20%", short: "> 20%", points: 1.5 },
+  { id: "tidak_tahu", label: "Tidak tahu", short: "Tidak Diketahui", points: 0 },
+];
+
+const ROAS_OPTIONS: QuizOption[] = [
+  { id: "di_bawah_5", label: "Di bawah 5", short: "< 5", points: 0 },
+  { id: "5_7", label: "5 – 7", short: "5–7", points: 0 },
+  { id: "7_10", label: "7 – 10", short: "7–10", points: 0 },
+  { id: "10_20", label: "10 – 20", short: "10–20", points: 0 },
+  { id: "di_atas_20", label: "Di atas 20", short: "> 20", points: 0 },
+  { id: "tidak_tahu", label: "Tidak tahu", short: "Tidak Diketahui", points: 0 },
+];
+
+// Ad-efficiency points = f(margin bucket, ROAS bucket).
+// Derived from the original formula: BEP ROAS = 1 / margin.
+// 1.5 = clearly above BEP, 0.75 = borderline (overlapping BEP range), 0 = below.
+const AD_MATRIX: Record<string, Record<string, number>> = {
+  di_atas_20: { di_bawah_5: 0.75, "5_7": 1.5, "7_10": 1.5, "10_20": 1.5, di_atas_20: 1.5 },
+  "15_20": { di_bawah_5: 0, "5_7": 0.75, "7_10": 1.5, "10_20": 1.5, di_atas_20: 1.5 },
+  "10_15": { di_bawah_5: 0, "5_7": 0, "7_10": 0.75, "10_20": 1.5, di_atas_20: 1.5 },
+  "5_10": { di_bawah_5: 0, "5_7": 0, "7_10": 0, "10_20": 0.75, di_atas_20: 1.5 },
+  di_bawah_5: { di_bawah_5: 0, "5_7": 0, "7_10": 0, "10_20": 0, di_atas_20: 0.75 },
+};
+
+// Human-readable BEP ROAS range per margin bucket (BEP = 1 / margin).
+const BEP_TEXT: Record<string, string> = {
+  di_atas_20: "di bawah 5",
+  "15_20": "5 – 6,7",
+  "10_15": "6,7 – 10",
+  "5_10": "10 – 20",
+  di_bawah_5: "di atas 20",
+};
+
+const labelOf = (options: QuizOption[], id: string | null) =>
+  options.find((o) => o.id === id)?.label ?? "";
+
+const shortOf = (options: QuizOption[], id: string | null) =>
+  options.find((o) => o.id === id)?.short ?? "";
+
+const pointsOf = (options: QuizOption[], id: string | null) =>
+  options.find((o) => o.id === id)?.points ?? 0;
+
+// ---------------------------------------------------------------------------
+// Steps & data model
+// ---------------------------------------------------------------------------
+
+const STEP = {
+  PLATFORM: 0,
+  PROFILE: 1,
+  Q_TREND: 2,
+  Q_CONC: 3,
+  Q_MARGIN: 4,
+  Q_ROAS: 5,
+  RESULTS: 6,
+} as const;
+
+const QUIZ_TOTAL_PAGES = 5; // profile + 4 quiz questions
+
+// Urgency copy shown under each quiz question.
+// NOTE: hedged industry-style claims — replace with verified internal
+// Growlab data for stronger, defensible messaging.
+const FACTS: Record<number, string> = {
+  [STEP.Q_TREND]:
+    "Toko yang terlambat menyadari tren penurunan omzet butuh waktu pemulihan hingga 2–3x lebih lama. Makin telat terdeteksi, makin mahal biaya recovery-nya.",
+  [STEP.Q_CONC]:
+    "Sebagian besar toko marketplace terlalu bergantung pada segelintir produk andalan. Sekali produk itu kena banned, kehabisan stok, atau digempur kompetitor — omzet bisa anjlok dalam hitungan hari.",
+  [STEP.Q_MARGIN]:
+    "Banyak seller tidak sadar sedang berjualan rugi: setelah dihitung potongan platform, biaya iklan, dan operasional, margin yang terlihat 'aman' bisa habis tak bersisa.",
+  [STEP.Q_ROAS]:
+    "ROAS yang terlihat besar belum tentu untung. Selama masih di bawah BEP ROAS, makin besar budget iklan justru makin besar kerugiannya.",
+};
+
+interface QuizData {
   platform: Platform;
   userName: string;
   shopName: string;
   phoneNumber: string;
-  monthlyRevenue: [number | null, number | null, number | null];
-  topProducts: [ProductData, ProductData, ProductData];
+  gmvAnswer: string | null;
+  trendAnswer: string | null;
+  concentrationAnswer: string | null;
+  marginAnswer: string | null;
+  roasAnswer: string | null;
 }
 
-const INITIAL_PRODUCT: ProductData = {
-  name: "",
-  revenue: null,
-  price: null,
-  hpp: null,
-  adSpend: null,
-  roasRoi: null,
-};
-
-const INITIAL_DATA: FormData = {
+const INITIAL_DATA: QuizData = {
   platform: "Shopee",
   userName: "",
   shopName: "",
   phoneNumber: "",
-  monthlyRevenue: [null, null, null],
-  topProducts: [
-    { ...INITIAL_PRODUCT, name: "Produk 1" },
-    { ...INITIAL_PRODUCT, name: "Produk 2" },
-    { ...INITIAL_PRODUCT, name: "Produk 3" },
-  ],
+  gmvAnswer: null,
+  trendAnswer: null,
+  concentrationAnswer: null,
+  marginAnswer: null,
+  roasAnswer: null,
 };
 
+const genId = () =>
+  Math.random().toString(36).substring(2, 15) +
+  Math.random().toString(36).substring(2, 15);
+
+// "Live viewers" badge numbers: random per visit, 20–50 range, decreasing as
+// the user advances through the funnel. Regenerated on every mount.
+function genViewerCounts(): number[] {
+  const counts: number[] = [];
+  let current = 38 + Math.floor(Math.random() * 13); // 38–50
+  for (let i = 0; i <= STEP.RESULTS; i++) {
+    counts.push(Math.max(20, current));
+    current -= 2 + Math.floor(Math.random() * 5); // -2..-6 per page
+  }
+  return counts;
+}
+
+// Session persistence — survives refresh / closing the tab (24h TTL) so a
+// returning user continues with the same submissionId and answers.
+const SESSION_KEY = "mhc_v2_session";
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+
+// ---------------------------------------------------------------------------
+// Scoring (max 5.0 = trend 1 + concentration 1 + margin 1.5 + ads 1.5)
+// ---------------------------------------------------------------------------
+
+function calculateScoreV2(d: QuizData) {
+  const trend = pointsOf(TREND_OPTIONS, d.trendAnswer);
+  const concentration = pointsOf(CONCENTRATION_OPTIONS, d.concentrationAnswer);
+  const profitability = pointsOf(MARGIN_OPTIONS, d.marginAnswer);
+
+  const marginKnown =
+    d.marginAnswer !== null && d.marginAnswer !== "tidak_tahu";
+  const roasKnown = d.roasAnswer !== null && d.roasAnswer !== "tidak_tahu";
+
+  let adPerformance = 0;
+  if (marginKnown && roasKnown) {
+    adPerformance = AD_MATRIX[d.marginAnswer!]?.[d.roasAnswer!] ?? 0;
+  }
+
+  const score = trend + concentration + profitability + adPerformance;
+
+  return {
+    score,
+    details: { trend, concentration, profitability, adPerformance },
+    marginKnown,
+    roasKnown,
+    bepText: marginKnown ? BEP_TEXT[d.marginAnswer!] : null,
+  };
+}
+
+const fmtScore = (s: number) => s.toFixed(2).replace(/0$/, "");
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 export default function MarketplaceHealthCheck() {
-  const [step, setStep] = useState(0);
-  const [data, setData] = useState<FormData>(INITIAL_DATA);
-  const [isCalculated, setIsCalculated] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [submissionId] = useState(
-    () =>
-      Math.random().toString(36).substring(2, 15) +
-      Math.random().toString(36).substring(2, 15),
-  );
+  const [step, setStep] = useState<number>(STEP.PLATFORM);
+  const [data, setData] = useState<QuizData>(INITIAL_DATA);
+  const [submissionId, setSubmissionId] = useState(genId);
+
+  // Generated client-side after mount (avoids SSR hydration mismatch).
+  const [viewerCounts, setViewerCounts] = useState<number[] | null>(null);
 
   // Meta attribution signals. Captured from the URL (fbclid) and cookies,
   // so they survive even if the browser Pixel script gets blocked.
@@ -82,15 +243,28 @@ export default function MarketplaceHealthCheck() {
   const [fbp, setFbp] = useState<string | null>(null);
   const [sourceUrl, setSourceUrl] = useState<string>("");
 
+  // Reliability layer: latest data for the online-retry handler, plus a
+  // pending-save slot for writes that failed after all retries.
+  const latestDataRef = useRef(data);
+  const pendingSaveRef = useRef<{
+    sheetName: "full_submit_v2" | "partial_submit_v2";
+    score?: number;
+    eventId?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    latestDataRef.current = data;
+  }, [data]);
+
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [step]);
 
+  // Capture attribution + restore a previous session (if any) on mount.
   useEffect(() => {
     setSourceUrl(window.location.href);
+    setViewerCounts(genViewerCounts());
 
-    // 1) fbc — prefer the live cookie set by the Pixel, otherwise build it
-    //    ourselves from the fbclid in the URL (blocker-proof).
     const fbcCookie = document.cookie.match(/_fbc=([^;]+)/);
     if (fbcCookie) {
       setFbc(decodeURIComponent(fbcCookie[1]));
@@ -98,290 +272,378 @@ export default function MarketplaceHealthCheck() {
       const fbclid = new URLSearchParams(window.location.search).get("fbclid");
       if (fbclid) setFbc(`fb.1.${Date.now()}.${fbclid}`);
     }
-
-    // 2) fbp — browser id cookie, included when available for better matching.
     const fbpCookie = document.cookie.match(/_fbp=([^;]+)/);
     if (fbpCookie) setFbp(decodeURIComponent(fbpCookie[1]));
-  }, []);
 
-  const formatIDR = (val: number | string | null) => {
-    if (val === null || val === "") return "";
-    const num = typeof val === "string" ? parseIDR(val) || 0 : (val as number);
-    if (isNaN(num)) return "";
-    const isShopee = data.platform === "Shopee";
-    const locale = isShopee ? "id-ID" : "en-US";
-    return new Intl.NumberFormat(locale, {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    }).format(num);
-  };
-
-  const parseIDR = (val: string) => {
-    if (!val.trim()) return null;
-    const isShopee = data.platform === "Shopee";
-    let cleaned = val;
-    if (isShopee) {
-      cleaned = cleaned.split(".").join("").replace(",", ".");
-    } else {
-      cleaned = cleaned.split(",").join("");
+    try {
+      const raw = localStorage.getItem(SESSION_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        const fresh =
+          saved &&
+          typeof saved.savedAt === "number" &&
+          Date.now() - saved.savedAt < SESSION_TTL_MS;
+        if (
+          fresh &&
+          saved.submissionId &&
+          saved.data &&
+          typeof saved.step === "number" &&
+          saved.step >= STEP.PROFILE &&
+          saved.step <= STEP.RESULTS
+        ) {
+          setSubmissionId(saved.submissionId);
+          setData({ ...INITIAL_DATA, ...saved.data });
+          setStep(saved.step);
+        } else if (raw) {
+          localStorage.removeItem(SESSION_KEY);
+        }
+      }
+    } catch {
+      /* corrupted session — ignore */
     }
-    const parsed = parseFloat(cleaned);
-    return isNaN(parsed) ? null : parsed;
-  };
-
-  const parseROAS = (val: string) => {
-    if (!val.trim()) return null;
-    const cleaned = val.replace(",", ".");
-    const parsed = parseFloat(cleaned);
-    return isNaN(parsed) ? null : parsed;
-  };
-
-  // Keep server warm while user is filling the form
-  useEffect(() => {
-    const pingInterval = setInterval(() => {
-      fetch("/api/ping").catch(() => {});
-    }, 30000);
-    return () => clearInterval(pingInterval);
   }, []);
+
+  // Persist the session on every change (once the funnel has started).
+  useEffect(() => {
+    try {
+      if (step >= STEP.PROFILE) {
+        localStorage.setItem(
+          SESSION_KEY,
+          JSON.stringify({ submissionId, data, step, savedAt: Date.now() }),
+        );
+      }
+    } catch {
+      /* storage full/blocked — non-fatal */
+    }
+  }, [data, step, submissionId]);
+
+  // When the connection comes back, flush any save that failed while offline.
+  useEffect(() => {
+    const onOnline = () => {
+      const pending = pendingSaveRef.current;
+      if (pending) {
+        pendingSaveRef.current = null;
+        saveToSheet(pending.sheetName, latestDataRef.current, {
+          score: pending.score,
+          eventId: pending.eventId,
+        });
+      }
+    };
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fbc, fbp, sourceUrl, submissionId]);
+
+  // -------------------------------------------------------------------------
+  // Persistence — every write sends the FULL snapshot, so the latest row per
+  // SubmissionId in the sheet is always the complete, accurate state.
+  // -------------------------------------------------------------------------
+
+  const saveToSheet = useCallback(
+    async (
+      sheetName: "full_submit_v2" | "partial_submit_v2",
+      snapshot: QuizData,
+      opts: { score?: number; eventId?: string } = {},
+    ) => {
+      const body = JSON.stringify({
+        sheetName,
+        submissionId,
+        platform: snapshot.platform,
+        userName: snapshot.userName,
+        shopName: snapshot.shopName,
+        phoneNumber: snapshot.phoneNumber,
+        gmvAnswer: labelOf(GMV_OPTIONS, snapshot.gmvAnswer),
+        trendAnswer: labelOf(TREND_OPTIONS, snapshot.trendAnswer),
+        concentrationAnswer: labelOf(
+          CONCENTRATION_OPTIONS,
+          snapshot.concentrationAnswer,
+        ),
+        marginAnswer: labelOf(MARGIN_OPTIONS, snapshot.marginAnswer),
+        roasAnswer: labelOf(ROAS_OPTIONS, snapshot.roasAnswer),
+        ...(opts.score !== undefined ? { score: opts.score } : {}),
+        // Meta attribution + dedup signals
+        fbc,
+        fbp,
+        eventId: opts.eventId,
+        eventSourceUrl: sourceUrl,
+      });
+
+      const maxAttempts = 3;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          const response = await fetch("/api/save-to-sheet", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body,
+          });
+          if (response.ok) {
+            return true;
+          }
+        } catch (error) {
+          console.error(`Save attempt ${attempt} error:`, error);
+        }
+        if (attempt < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, 1200 * attempt));
+        }
+      }
+
+      // All retries failed (likely offline). Park it; the 'online' listener
+      // and the next answer (full snapshot) will both self-heal.
+      pendingSaveRef.current = {
+        sheetName,
+        score: opts.score,
+        eventId: opts.eventId,
+      };
+      return false;
+    },
+    [submissionId, fbc, fbp, sourceUrl],
+  );
+
+  // -------------------------------------------------------------------------
+  // Handlers
+  // -------------------------------------------------------------------------
 
   const handlePlatformSelect = (p: Platform) => {
-    setData({
-      ...INITIAL_DATA,
-      platform: p,
-      monthlyRevenue: [null, null, null],
-      topProducts: [
-        { ...INITIAL_PRODUCT, name: "Produk 1" },
-        { ...INITIAL_PRODUCT, name: "Produk 2" },
-        { ...INITIAL_PRODUCT, name: "Produk 3" },
-      ],
-    });
-    setIsCalculated(false);
-    setStep(1);
+    setData((prev) => ({ ...prev, platform: p }));
+    setStep(STEP.PROFILE);
   };
 
-  const updateRevenue = (index: number, value: string) => {
-    const parsed = parseIDR(value);
-    const newRev = [...data.monthlyRevenue] as [
-      number | null,
-      number | null,
-      number | null,
-    ];
-    newRev[index] = parsed;
-    setData((prev) => ({ ...prev, monthlyRevenue: newRev }));
+  const handleProfileSubmit = () => {
+    const eventId = `Lead_${submissionId}`;
+    fbq.event("Lead", { content_name: "Profiling Submitted" }, eventId);
+    saveToSheet("partial_submit_v2", data, { eventId });
+    setStep(STEP.Q_TREND);
   };
 
-  const updateProduct = (
-    index: number,
-    field: keyof ProductData,
-    value: any,
+  // Generic quiz answer: store it, persist the full snapshot, advance.
+  const answerAndGo = (
+    field: keyof QuizData,
+    optionId: string,
+    nextStep: number,
   ) => {
-    let finalValue = value;
-    if (
-      ["revenue", "price", "hpp", "adSpend"].includes(field) &&
-      typeof value === "string"
-    ) {
-      finalValue = parseIDR(value);
-    } else if (field === "roasRoi" && typeof value === "string") {
-      const filteredValue = value.replace(/[^0-9.,]/g, "");
-      const parts = filteredValue.split(/[.,]/);
-      if (parts.length > 2) return;
-      const parsed = parseROAS(filteredValue);
-      if (parsed !== null && parsed >= 1000) return;
-      finalValue = filteredValue;
-    }
-    const newProducts = [...data.topProducts] as [
-      ProductData,
-      ProductData,
-      ProductData,
-    ];
-    newProducts[index] = { ...newProducts[index], [field]: finalValue };
-    setData((prev) => ({ ...prev, topProducts: newProducts }));
-  };
-
-  const calculateResults = (formData: FormData) => {
-    const allRevenueZero = formData.monthlyRevenue.every((v) => !v || v === 0);
-    const allProductsZero = formData.topProducts.every(
-      (p) =>
-        (!p.revenue || p.revenue === 0) &&
-        (!p.price || p.price === 0) &&
-        (!p.hpp || p.hpp === 0) &&
-        (!p.adSpend || p.adSpend === 0) &&
-        (typeof p.roasRoi === "string"
-          ? !parseROAS(p.roasRoi) || parseROAS(p.roasRoi) === 0
-          : !p.roasRoi || p.roasRoi === 0),
-    );
-
-    if (allRevenueZero && allProductsZero) {
-      return {
-        score: 0,
-        details: {
-          trend: 0,
-          concentration: 0,
-          profitability: 0,
-          adPerformance: 0,
-        },
-        productResults: formData.topProducts.map(() => ({
-          isProfitable: false,
-          isAdGood: false,
-          bep: Infinity,
-        })),
-        ratio: 0,
-      };
-    }
-
-    let score = 0;
-    const details = {
-      trend: 0,
-      concentration: 0,
-      profitability: 0,
-      adPerformance: 0,
-    };
-
-    const [m3, m2, m1] = formData.monthlyRevenue.map((v) => v || 0);
-    const isUp1 = m2 > m3;
-    const isUp2 = m1 > m2;
-    const isDown1 = m2 < m3;
-    const isDown2 = m1 < m2;
-
-    if (isUp1 && isUp2) {
-      details.trend = 1;
-    } else if ((isUp1 && isDown2) || (isDown1 && isUp2)) {
-      details.trend = 0.5;
-    } else if (isDown1 && isDown2) {
-      details.trend = 0;
-    } else {
-      details.trend = 0.5;
-    }
-    score += details.trend;
-
-    const top3Total = formData.topProducts.reduce(
-      (sum, p) => sum + (p.revenue || 0),
-      0,
-    );
-    const lastMonthRev = formData.monthlyRevenue[2] || 0;
-    const ratio = lastMonthRev > 0 ? top3Total / lastMonthRev : 0;
-
-    if (ratio < 0.5) {
-      details.concentration = 1;
-    } else if (ratio < 0.75) {
-      details.concentration = 0.5;
-    } else {
-      details.concentration = 0;
-    }
-    score += details.concentration;
-
-    const marginFactor = formData.platform === "Shopee" ? 0.7 : 0.65;
-    const fixedFee = 1250;
-    const productResults = formData.topProducts.map((p) => {
-      const price = p.price || 0;
-      const hpp = p.hpp || 0;
-      const marginPerUnit = price * marginFactor - fixedFee - hpp;
-      const isProfitable = price * marginFactor - fixedFee > hpp;
-      const bep = marginPerUnit > 0 ? 1 / (marginPerUnit / price) : Infinity;
-      const currentRoasRoi =
-        typeof p.roasRoi === "string"
-          ? parseROAS(p.roasRoi) || 0
-          : p.roasRoi || 0;
-      const isAdGood = currentRoasRoi > bep;
-      return { isProfitable, isAdGood, bep };
+    const next = { ...data, [field]: optionId };
+    setData(next);
+    // Reuse the Lead event_id so repeated partial writes never create a
+    // second Lead on Meta's side (deduplicated).
+    saveToSheet("partial_submit_v2", next, {
+      eventId: `Lead_${submissionId}`,
     });
-
-    const profScore = productResults.filter((r) => r.isProfitable).length * 0.5;
-    details.profitability = profScore;
-    score += profScore;
-
-    const adScore = productResults.filter((r) => r.isAdGood).length * 0.5;
-    details.adPerformance = adScore;
-    score += adScore;
-
-    return { score, details, productResults, ratio };
-  };
-
-  const results = useMemo(() => {
-    if (!isCalculated) return null;
-    return calculateResults(data);
-  }, [isCalculated, data]);
-
-  const saveToSheet = async (
-    sheetName: "full_submit" | "partial_submit",
-    score?: number,
-    eventId?: string,
-  ) => {
-    let success = false;
-    let attempts = 0;
-    const maxAttempts = sheetName === "full_submit" ? 3 : 1;
-
-    while (!success && attempts < maxAttempts) {
-      try {
-        const response = await fetch("/api/save-to-sheet", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: JSON.stringify({
-            ...data,
-            sheetName,
-            submissionId,
-            ...(score !== undefined ? { score } : {}),
-            // Meta attribution + dedup signals
-            fbc,
-            fbp,
-            eventId,
-            eventSourceUrl: sourceUrl,
-          }),
-        });
-        if (response.ok) {
-          success = true;
-        }
-      } catch (error) {
-        console.error(`Save attempt ${attempts + 1} error:`, error);
-      }
-      attempts++;
-      if (!success && attempts < maxAttempts) {
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-      }
+    if (nextStep === STEP.RESULTS) {
+      finish(next);
+    } else {
+      setStep(nextStep);
     }
-    return success;
   };
 
-  const handleCalculate = async () => {
-    setIsSaving(true);
-    const currentResults = calculateResults(data);
-
-    // Shared id so the browser pixel event and the server CAPI event
-    // are deduplicated by Meta into a single conversion.
+  const finish = (snapshot: QuizData) => {
+    const { score } = calculateScoreV2(snapshot);
     const eventId = `CompleteRegistration_${submissionId}`;
 
-    // Browser pixel (may be blocked — server will cover it).
     fbq.event(
       "CompleteRegistration",
       {
         content_name: "Health Check Completed",
-        value: currentResults.score,
+        value: score,
         currency: "IDR",
       },
       eventId,
     );
 
-    await saveToSheet("full_submit", currentResults.score, eventId);
-    setIsSaving(false);
-    setIsCalculated(true);
-    setStep(4);
+    // Fire-and-forget: results show instantly, the save retries in the
+    // background and re-fires on reconnect if the network is down.
+    saveToSheet("full_submit_v2", snapshot, { score, eventId });
+    setStep(STEP.RESULTS);
   };
 
   const reset = () => {
+    try {
+      localStorage.removeItem(SESSION_KEY);
+    } catch {
+      /* ignore */
+    }
     setData(INITIAL_DATA);
-    setStep(0);
-    setIsCalculated(false);
+    setSubmissionId(genId());
+    setViewerCounts(genViewerCounts());
+    setStep(STEP.PLATFORM);
   };
+
+  const results = useMemo(() => {
+    if (step !== STEP.RESULTS) return null;
+    return calculateScoreV2(data);
+  }, [step, data]);
+
+  const roasLabel = data.platform === "Shopee" ? "ROAS" : "ROI";
+
+  // Provisional score: shown on quiz pages once at least one answer exists.
+  const hasStartedQuiz =
+    data.trendAnswer !== null ||
+    data.concentrationAnswer !== null ||
+    data.marginAnswer !== null ||
+    data.roasAnswer !== null;
+  const provisionalScore =
+    hasStartedQuiz && step >= STEP.Q_TREND && step <= STEP.Q_ROAS
+      ? calculateScoreV2(data).score
+      : null;
 
   const getWAMessage = () => {
     if (!results) return "";
     return encodeURIComponent(
-      `Halo Kak,\n\nSaya baru saja melakukan Marketplace Health Check dan ingin konsultasi terkait bisnis saya.\n\n*Profil Online Shop:*\n- Nama: ${data.userName}\n- Platform: ${data.platform}\n- Nama Online Shop: ${data.shopName}\n\n*Hasil Analisis Online Shop Saya:*\n- Skor Kesehatan: ${results.score.toFixed(1)}/5.0\n- Tren Omzet: ${results.details.trend === 1 ? "Naik Stabil" : results.details.trend === 0.5 ? "Fluktuatif" : "Menurun"}\n- Ketergantungan Produk: ${(results.ratio * 100).toFixed(0)}%\n- Profitabilitas: ${results.productResults.filter((r) => r.isProfitable).length}/3 Produk Untung\n- Efisiensi Iklan: ${results.productResults.filter((r) => r.isAdGood).length}/3 Produk Efisien`,
+      `Halo Kak,\n\nSaya baru saja melakukan Marketplace Health Check dan ingin konsultasi terkait bisnis saya.\n\n*Profil Online Shop:*\n- Nama: ${data.userName}\n- Platform: ${data.platform}\n- Nama Online Shop: ${data.shopName}\n- Rata-rata Omzet/Bulan: ${shortOf(GMV_OPTIONS, data.gmvAnswer) || "-"}\n\n*Hasil Analisis Online Shop Saya:*\n- Skor Kesehatan: ${fmtScore(results.score)}/5.0\n- Tren Omzet: ${shortOf(TREND_OPTIONS, data.trendAnswer) || "-"}\n- Kontribusi Top 3 Produk: ${shortOf(CONCENTRATION_OPTIONS, data.concentrationAnswer) || "-"}\n- Margin Produk Terlaris: ${shortOf(MARGIN_OPTIONS, data.marginAnswer) || "-"}\n- ${roasLabel} Produk Terlaris: ${shortOf(ROAS_OPTIONS, data.roasAnswer) || "-"}`,
     );
   };
+
+  // -------------------------------------------------------------------------
+  // Small render helpers
+  // -------------------------------------------------------------------------
+
+  const ViewerBadge = () => {
+    if (!viewerCounts) return null;
+    const count = viewerCounts[Math.min(step, viewerCounts.length - 1)];
+    return (
+      <div className="flex justify-center mb-6">
+        <div className="inline-flex items-center gap-2 bg-white border border-slate-200 rounded-full px-4 py-1.5 shadow-sm">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+          </span>
+          <Eye size={14} className="text-slate-400" />
+          <span className="text-xs font-bold text-slate-600">
+            {count} orang sedang mengakses halaman ini
+          </span>
+        </div>
+      </div>
+    );
+  };
+
+  const ProgressBar = () => {
+    if (step < STEP.PROFILE || step > STEP.Q_ROAS) return null;
+    const page = step; // PROFILE=1 ... Q_ROAS=5
+    const pct = Math.round((page / QUIZ_TOTAL_PAGES) * 100);
+    return (
+      <div className="max-w-2xl mx-auto mb-6">
+        <div className="flex justify-between items-center mb-2">
+          <span className="text-xs font-bold text-slate-500">
+            Langkah {page} dari {QUIZ_TOTAL_PAGES}
+          </span>
+          <span className="text-xs font-bold text-indigo-600">{pct}%</span>
+        </div>
+        <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+          <div
+            className="bg-indigo-600 h-full rounded-full transition-all duration-500"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      </div>
+    );
+  };
+
+  const QuizScreen = ({
+    stepKey,
+    icon,
+    question,
+    options,
+    value,
+    onSelect,
+    onBack,
+    fact,
+    provisional,
+  }: {
+    stepKey: string;
+    icon: React.ReactNode;
+    question: string;
+    options: QuizOption[];
+    value: string | null;
+    onSelect: (id: string) => void;
+    onBack: () => void;
+    fact?: string;
+    provisional?: number | null;
+  }) => (
+    <motion.div
+      key={stepKey}
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -20 }}
+      className="card p-6 md:p-8 max-w-2xl mx-auto"
+    >
+      {provisional !== null && provisional !== undefined && (
+        <div className="mb-6 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-5 py-4 flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-black uppercase tracking-wider text-indigo-200 flex items-center gap-1.5">
+              Skor Sementara
+              <span className="bg-amber-400 text-amber-950 rounded-full px-2 py-0.5 text-[10px]">
+                BELUM FINAL
+              </span>
+            </div>
+            <div className="text-2xl font-black">
+              {fmtScore(provisional)}
+              <span className="text-sm opacity-60">/5.0</span>
+            </div>
+          </div>
+          <p className="text-xs font-semibold text-indigo-100 text-right max-w-[180px]">
+            Selesaikan semua pertanyaan untuk melihat skor akhir Anda
+          </p>
+        </div>
+      )}
+
+      <div className="flex items-start gap-3 mb-6 text-indigo-600">
+        <div className="mt-0.5 shrink-0">{icon}</div>
+        <h2 className="text-xl font-bold text-slate-900">{question}</h2>
+      </div>
+
+      <div className="space-y-3">
+        {options.map((opt) => {
+          const selected = value === opt.id;
+          return (
+            <button
+              key={opt.id}
+              onClick={() => onSelect(opt.id)}
+              className={`w-full text-left px-5 py-4 rounded-xl border-2 font-semibold transition-all flex items-center justify-between gap-3 group ${
+                selected
+                  ? "border-indigo-600 bg-indigo-50 text-indigo-900"
+                  : "border-slate-200 bg-white text-slate-800 hover:border-indigo-400 hover:bg-indigo-50/50 active:scale-[0.99]"
+              }`}
+            >
+              <span>{opt.label}</span>
+              <ChevronRight
+                size={20}
+                className={`shrink-0 transition-all ${
+                  selected
+                    ? "text-indigo-600"
+                    : "text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-0.5"
+                }`}
+              />
+            </button>
+          );
+        })}
+      </div>
+
+      {fact && (
+        <div className="mt-6 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 flex gap-3">
+          <AlertTriangle size={18} className="text-amber-500 shrink-0 mt-0.5" />
+          <p className="text-sm text-amber-900 font-medium">
+            <span className="font-black">Tahukah Anda? </span>
+            {fact}
+          </p>
+        </div>
+      )}
+
+      <div className="mt-8">
+        <button
+          onClick={onBack}
+          className="text-slate-500 hover:text-slate-800 font-semibold text-sm flex items-center gap-1 transition-colors"
+        >
+          <ChevronLeft size={18} /> Kembali
+        </button>
+      </div>
+    </motion.div>
+  );
+
+  // -------------------------------------------------------------------------
+  // Render
+  // -------------------------------------------------------------------------
 
   return (
     <div className="min-h-screen p-4 md:p-8 relative overflow-hidden">
@@ -390,7 +652,7 @@ export default function MarketplaceHealthCheck() {
 
       <div className="max-w-4xl mx-auto relative">
         <header
-          className={`mb-8 text-center transition-all duration-500 ${step === 0 ? "mt-12 mb-16" : ""}`}
+          className={`mb-8 text-center transition-all duration-500 ${step === STEP.PLATFORM ? "mt-12 mb-16" : ""}`}
         >
           <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
@@ -413,7 +675,7 @@ export default function MarketplaceHealthCheck() {
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.1 }}
-            className={`${step === 0 ? "text-4xl md:text-5xl" : "text-3xl"} font-black tracking-tight text-slate-900 mb-4`}
+            className={`${step === STEP.PLATFORM ? "text-4xl md:text-5xl" : "text-3xl"} font-black tracking-tight text-slate-900 mb-4`}
           >
             Marketplace <span className="text-indigo-600">Health Check</span>
           </motion.h1>
@@ -423,18 +685,21 @@ export default function MarketplaceHealthCheck() {
             transition={{ delay: 0.2 }}
             className="text-slate-700 text-lg font-semibold max-w-xl mx-auto"
           >
-            {step === 0
+            {step === STEP.PLATFORM
               ? "Dapatkan skor kesehatan toko Anda secara cepat dan akurat berdasarkan performa toko Anda"
               : "Evaluasi kesehatan toko Anda dalam hitungan menit"}
           </motion.p>
         </header>
 
+        <ViewerBadge />
+        <ProgressBar />
+
         <main>
           <AnimatePresence mode="wait">
-            {/* STEP 0 - Platform Selection */}
-            {step === 0 && (
+            {/* STEP 0 — Platform Selection */}
+            {step === STEP.PLATFORM && (
               <motion.div
-                key="step0"
+                key="platform"
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -30 }}
@@ -500,7 +765,7 @@ export default function MarketplaceHealthCheck() {
                         Hasil Instan
                       </h4>
                       <p className="text-xs text-slate-600 font-bold">
-                        Analisis dengan Cepat
+                        Cukup 1 Menit, Tanpa Ribet
                       </p>
                     </div>
                   </div>
@@ -534,10 +799,10 @@ export default function MarketplaceHealthCheck() {
               </motion.div>
             )}
 
-            {/* STEP 1 - User Info */}
-            {step === 1 && (
+            {/* STEP 1 — Profiling */}
+            {step === STEP.PROFILE && (
               <motion.div
-                key="step-user-info"
+                key="profile"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
@@ -589,36 +854,49 @@ export default function MarketplaceHealthCheck() {
                       }}
                     />
                   </div>
+                  <div className="input-group">
+                    <label className="label">
+                      Berapa rata-rata omzet / GMV per bulan online shop Anda?
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {GMV_OPTIONS.map((opt) => {
+                        const selected = data.gmvAnswer === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() =>
+                              setData({ ...data, gmvAnswer: opt.id })
+                            }
+                            className={`px-4 py-2.5 rounded-full border-2 text-sm font-bold transition-all ${
+                              selected
+                                ? "border-indigo-600 bg-indigo-600 text-white shadow-md shadow-indigo-200"
+                                : "border-slate-200 bg-white text-slate-700 hover:border-indigo-400 hover:bg-indigo-50"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="flex justify-between">
                   <button
-                    onClick={() => {
-                      setData((prev) => ({
-                        ...prev,
-                        userName: "",
-                        phoneNumber: "",
-                      }));
-                      setStep(0);
-                    }}
+                    onClick={() => setStep(STEP.PLATFORM)}
                     className="btn-secondary flex items-center gap-2"
                   >
                     <ChevronLeft size={20} /> Kembali
                   </button>
                   <button
-                    onClick={() => {
-                      const eventId = `Lead_${submissionId}`;
-                      fbq.event(
-                        "Lead",
-                        { content_name: "Profiling Submitted" },
-                        eventId,
-                      );
-                      saveToSheet("partial_submit", undefined, eventId);
-                      setStep(2);
-                    }}
+                    onClick={handleProfileSubmit}
                     className="btn-primary flex items-center gap-2"
                     disabled={
-                      !data.userName || !data.shopName || !data.phoneNumber
+                      !data.userName ||
+                      !data.shopName ||
+                      !data.phoneNumber ||
+                      !data.gmvAnswer
                     }
                   >
                     Lanjut <ChevronRight size={20} />
@@ -627,248 +905,78 @@ export default function MarketplaceHealthCheck() {
               </motion.div>
             )}
 
-            {/* STEP 2 - Monthly Revenue */}
-            {step === 2 && (
-              <motion.div
-                key="step1"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="card p-6 md:p-8"
-              >
-                <div className="flex items-center gap-2 mb-6 text-indigo-600">
-                  <BarChart3 size={24} />
-                  <h2 className="text-xl font-bold">
-                    GMV Pesanan Siap Dikirim 3 Bulan Terakhir
-                  </h2>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                  {["3 Bulan Lalu", "2 Bulan Lalu", "1 Bulan Terakhir"].map(
-                    (label, i) => (
-                      <div key={i} className="input-group">
-                        <label className="label">{label}</label>
-                        <div className="relative">
-                          <input
-                            type="text"
-                            className="input pl-4"
-                            placeholder="Masukkan nominal GMV"
-                            value={formatIDR(data.monthlyRevenue[i])}
-                            onChange={(e) => updateRevenue(i, e.target.value)}
-                          />
-                        </div>
-                      </div>
-                    ),
-                  )}
-                </div>
-
-                <div className="flex justify-between">
-                  <button
-                    onClick={() => setStep(1)}
-                    className="btn-secondary flex items-center gap-2"
-                  >
-                    <ChevronLeft size={20} /> Kembali
-                  </button>
-                  <button
-                    onClick={() => {
-                      // Save updated data, but reuse the same Lead event_id
-                      // from step 1 so Meta dedupes it (no double Lead).
-                      saveToSheet(
-                        "partial_submit",
-                        undefined,
-                        `Lead_${submissionId}`,
-                      );
-                      setStep(3);
-                    }}
-                    className="btn-primary flex items-center gap-2"
-                  >
-                    Lanjut <ChevronRight size={20} />
-                  </button>
-                </div>
-              </motion.div>
+            {/* Q1 — Trend */}
+            {step === STEP.Q_TREND && (
+              <QuizScreen
+                stepKey="q-trend"
+                icon={<TrendingUp size={26} />}
+                question="Bagaimana trend / kecenderungan omzet toko Anda selama 3 bulan terakhir?"
+                options={TREND_OPTIONS}
+                value={data.trendAnswer}
+                onSelect={(id) => answerAndGo("trendAnswer", id, STEP.Q_CONC)}
+                onBack={() => setStep(STEP.PROFILE)}
+                fact={FACTS[STEP.Q_TREND]}
+                provisional={provisionalScore}
+              />
             )}
 
-            {/* STEP 3 - Product Data */}
-            {step === 3 && (
-              <motion.div
-                key="step2"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="space-y-6"
-              >
-                <div className="card p-6 md:p-8">
-                  <div className="flex items-center gap-2 mb-2 text-indigo-600">
-                    <Target size={24} />
-                    <h2 className="text-xl font-bold">
-                      Top 3 Produk dengan GMV Pesanan Siap Dikirim Tertinggi (1
-                      Bulan Terakhir)
-                    </h2>
-                  </div>
-                  <div className="bg-indigo-50 border-l-4 border-indigo-500 p-4 rounded-r-lg mb-8">
-                    <p className="text-indigo-900 font-bold mb-2">
-                      Silakan masukkan data performa produk Anda khusus untuk
-                      periode{" "}
-                      <span className="underline decoration-2 underline-offset-4">
-                        1 bulan terakhir
-                      </span>
-                      .
-                    </p>
-                    <div className="text-sm text-indigo-700 font-bold leading-relaxed">
-                      {data.platform === "Shopee" ? (
-                        <div>
-                          <p>
-                            💡 Cara cek GMV Pesanan Siap Dikirim setiap produk:
-                          </p>
-                          <p className="ml-6 text-indigo-800 mt-1">
-                            Performa Toko &gt;&gt; Produk &gt;&gt; Performa
-                            Produk &gt;&gt; Pilih Periode Data yang Sesuai
-                          </p>
-                        </div>
-                      ) : (
-                        <p>
-                          💡 Cek GMV Pesanan Siap Dikirim dari setiap produk
-                          pada bagian Kompas Data
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="space-y-8">
-                    {data.topProducts.map((product, i) => (
-                      <div
-                        key={i}
-                        className="p-6 rounded-xl bg-slate-50 border border-slate-200 space-y-4"
-                      >
-                        <div className="flex items-center gap-3 mb-2">
-                          <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm">
-                            {i + 1}
-                          </div>
-                          <input
-                            type="text"
-                            className="bg-transparent border-none font-bold text-lg focus:ring-0 p-0 w-full outline-none"
-                            value={product.name}
-                            onChange={(e) =>
-                              updateProduct(i, "name", e.target.value)
-                            }
-                            placeholder={`Nama Produk ${i + 1}`}
-                          />
-                        </div>
-                        <div className="bg-indigo-50 border-l-4 border-indigo-500 p-3 rounded-r-lg">
-                          <p className="text-sm text-indigo-700 font-bold">
-                            Silakan masukkan data performa produk Anda khusus
-                            untuk periode 1 bulan terakhir.
-                          </p>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          <div className="input-group">
-                            <label className="label">
-                              GMV Pesanan Siap Dikirim
-                            </label>
-                            <input
-                              type="text"
-                              className="input pl-4 py-2 text-sm"
-                              placeholder="Masukkan nominal GMV"
-                              value={formatIDR(product.revenue)}
-                              onChange={(e) =>
-                                updateProduct(i, "revenue", e.target.value)
-                              }
-                            />
-                          </div>
-                          <div className="input-group">
-                            <label className="label">
-                              Harga Jual (Coret) per unit
-                            </label>
-                            <input
-                              type="text"
-                              className="input pl-4 py-2 text-sm"
-                              placeholder="Masukkan harga jual"
-                              value={formatIDR(product.price)}
-                              onChange={(e) =>
-                                updateProduct(i, "price", e.target.value)
-                              }
-                            />
-                          </div>
-                          <div className="input-group">
-                            <label className="label">HPP per Unit</label>
-                            <input
-                              type="text"
-                              className="input pl-4 py-2 text-sm"
-                              placeholder="Masukkan HPP"
-                              value={formatIDR(product.hpp)}
-                              onChange={(e) =>
-                                updateProduct(i, "hpp", e.target.value)
-                              }
-                            />
-                          </div>
-                          <div className="input-group">
-                            <label className="label">Biaya Iklan</label>
-                            <input
-                              type="text"
-                              className="input pl-4 py-2 text-sm"
-                              placeholder="Masukkan biaya iklan"
-                              value={formatIDR(product.adSpend)}
-                              onChange={(e) =>
-                                updateProduct(i, "adSpend", e.target.value)
-                              }
-                            />
-                          </div>
-                          <div className="input-group">
-                            <label className="label">
-                              {data.platform === "Shopee" ? "ROAS" : "ROI"}
-                            </label>
-                            <input
-                              type="text"
-                              className="input py-2 text-sm"
-                              placeholder={
-                                data.platform === "Shopee"
-                                  ? "Contoh 12,5"
-                                  : "Contoh 12.5"
-                              }
-                              value={product.roasRoi ?? ""}
-                              onChange={(e) =>
-                                updateProduct(i, "roasRoi", e.target.value)
-                              }
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="flex justify-between mt-8">
-                    <button
-                      onClick={() => setStep(2)}
-                      className="btn-secondary flex items-center gap-2"
-                    >
-                      <ChevronLeft size={20} /> Kembali
-                    </button>
-                    <button
-                      onClick={handleCalculate}
-                      className="btn-primary flex items-center gap-2"
-                      disabled={isSaving}
-                    >
-                      {isSaving ? (
-                        <>
-                          <Loader2 className="animate-spin" size={20} />
-                          <span>Menyimpan Hasil Analisis...</span>
-                        </>
-                      ) : (
-                        <>
-                          Lihat Hasil <CheckCircle2 size={20} />
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
+            {/* Q2 — Concentration */}
+            {step === STEP.Q_CONC && (
+              <QuizScreen
+                stepKey="q-conc"
+                icon={<PieChart size={26} />}
+                question="Kira-kira berapa persen kontribusi omzet 3 produk terlarismu terhadap keseluruhan omzet?"
+                options={CONCENTRATION_OPTIONS}
+                value={data.concentrationAnswer}
+                onSelect={(id) =>
+                  answerAndGo("concentrationAnswer", id, STEP.Q_MARGIN)
+                }
+                onBack={() => setStep(STEP.Q_TREND)}
+                fact={FACTS[STEP.Q_CONC]}
+                provisional={provisionalScore}
+              />
             )}
 
-            {/* STEP 4 - Results */}
-            {step === 4 && results && (
+            {/* Q3 — Margin (tidak tahu → straight to results) */}
+            {step === STEP.Q_MARGIN && (
+              <QuizScreen
+                stepKey="q-margin"
+                icon={<DollarSign size={26} />}
+                question="Kira-kira secara rata-rata berapa persen keuntungan produk terlaris kamu setelah dikurangi berbagai biaya potongan platform?"
+                options={MARGIN_OPTIONS}
+                value={data.marginAnswer}
+                onSelect={(id) =>
+                  answerAndGo(
+                    "marginAnswer",
+                    id,
+                    id === "tidak_tahu" ? STEP.RESULTS : STEP.Q_ROAS,
+                  )
+                }
+                onBack={() => setStep(STEP.Q_CONC)}
+                fact={FACTS[STEP.Q_MARGIN]}
+                provisional={provisionalScore}
+              />
+            )}
+
+            {/* Q4 — ROAS/ROI */}
+            {step === STEP.Q_ROAS && (
+              <QuizScreen
+                stepKey="q-roas"
+                icon={<Target size={26} />}
+                question={`Kira-kira berapa ${roasLabel} produk terlarismu?`}
+                options={ROAS_OPTIONS}
+                value={data.roasAnswer}
+                onSelect={(id) => answerAndGo("roasAnswer", id, STEP.RESULTS)}
+                onBack={() => setStep(STEP.Q_MARGIN)}
+                fact={FACTS[STEP.Q_ROAS]}
+                provisional={provisionalScore}
+              />
+            )}
+
+            {/* RESULTS */}
+            {step === STEP.RESULTS && results && (
               <motion.div
-                key="step3"
+                key="results"
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 className="space-y-6"
@@ -896,7 +1004,7 @@ export default function MarketplaceHealthCheck() {
                     ))}
                   </div>
                   <div className="text-6xl font-black mb-2">
-                    {results.score.toFixed(1)}
+                    {fmtScore(results.score)}
                     <span className="text-2xl opacity-50">/5.0</span>
                   </div>
                   <p className="text-lg font-medium text-indigo-100">
@@ -908,6 +1016,13 @@ export default function MarketplaceHealthCheck() {
                           ? "Kurang Sehat. Segera lakukan optimasi pada toko Anda."
                           : "Kritis! Toko Anda memerlukan perbaikan menyeluruh."}
                   </p>
+                  {!results.marginKnown && (
+                    <p className="mt-4 text-sm font-semibold text-indigo-100/90 bg-white/10 rounded-xl px-4 py-3 inline-block">
+                      Skor profitabilitas & efisiensi iklan belum bisa dinilai
+                      karena margin belum diketahui — ini sendiri adalah tanda
+                      bahaya untuk kesehatan toko Anda.
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-6 py-4">
@@ -960,11 +1075,7 @@ export default function MarketplaceHealthCheck() {
                     </div>
                     <div className="flex items-end gap-2 mb-2">
                       <div className="text-3xl font-bold">
-                        {results.details.trend === 1
-                          ? "Naik Stabil"
-                          : results.details.trend === 0.5
-                            ? "Fluktuatif"
-                            : "Menurun"}
+                        {shortOf(TREND_OPTIONS, data.trendAnswer) || "-"}
                       </div>
                       <div className="text-sm text-slate-500 mb-1">
                         +{results.details.trend} poin
@@ -987,7 +1098,10 @@ export default function MarketplaceHealthCheck() {
                     </div>
                     <div className="flex items-end gap-2 mb-2">
                       <div className="text-3xl font-bold">
-                        {(results.ratio * 100).toFixed(0)}%
+                        {shortOf(
+                          CONCENTRATION_OPTIONS,
+                          data.concentrationAnswer,
+                        ) || "-"}
                       </div>
                       <div className="text-sm text-slate-500 mb-1">
                         +{results.details.concentration} poin
@@ -1013,19 +1127,23 @@ export default function MarketplaceHealthCheck() {
                     </div>
                     <div className="flex items-end gap-2 mb-2">
                       <div className="text-3xl font-bold">
-                        {
-                          results.productResults.filter((r) => r.isProfitable)
-                            .length
-                        }
-                        /3
+                        {shortOf(MARGIN_OPTIONS, data.marginAnswer) || "-"}
                       </div>
                       <div className="text-sm text-slate-500 mb-1">
                         +{results.details.profitability} poin
                       </div>
                     </div>
-                    <p className="text-xs text-slate-500">
-                      Produk yang memiliki margin positif setelah biaya platform
+                    <p className="text-xs text-slate-500 mb-2">
+                      Margin produk terlaris setelah biaya potongan platform
                     </p>
+                    <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                      <div
+                        className="bg-indigo-600 h-full transition-all"
+                        style={{
+                          width: `${(results.details.profitability / 1.5) * 100}%`,
+                        }}
+                      ></div>
+                    </div>
                   </div>
 
                   <div className="card p-6">
@@ -1035,113 +1153,61 @@ export default function MarketplaceHealthCheck() {
                     </div>
                     <div className="flex items-end gap-2 mb-2">
                       <div className="text-3xl font-bold">
-                        {
-                          results.productResults.filter((r) => r.isAdGood)
-                            .length
-                        }
-                        /3
+                        {!results.marginKnown
+                          ? "Tidak Dinilai"
+                          : !results.roasKnown
+                            ? "Tidak Diketahui"
+                            : results.details.adPerformance >= 1.5
+                              ? "Efisien"
+                              : results.details.adPerformance > 0
+                                ? "Borderline"
+                                : "Tidak Efisien"}
                       </div>
                       <div className="text-sm text-slate-500 mb-1">
                         +{results.details.adPerformance} poin
                       </div>
                     </div>
-                    <p className="text-xs text-slate-500">
-                      Produk dengan{" "}
-                      {data.platform === "Shopee" ? "ROAS" : "ROI"} di atas BEP
+                    <p className="text-xs text-slate-500 mb-2">
+                      {results.marginKnown && results.roasKnown
+                        ? `${roasLabel} ${shortOf(ROAS_OPTIONS, data.roasAnswer)} dibanding ambang BEP`
+                        : `Dinilai dari perbandingan ${roasLabel} dengan BEP`}
+                    </p>
+                    <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                      <div
+                        className="bg-indigo-600 h-full transition-all"
+                        style={{
+                          width: `${(results.details.adPerformance / 1.5) * 100}%`,
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+
+                {results.bepText && (
+                  <div className="card p-6 bg-indigo-50/60 border-indigo-200">
+                    <div className="flex items-center gap-2 mb-2 text-indigo-700">
+                      <Zap size={20} />
+                      <h3 className="font-bold">
+                        Estimasi BEP {roasLabel} Anda: {results.bepText}
+                      </h3>
+                    </div>
+                    <p className="text-sm text-indigo-900/80 font-medium">
+                      Dengan margin{" "}
+                      {shortOf(MARGIN_OPTIONS, data.marginAnswer)}, iklan Anda
+                      baru benar-benar untung jika {roasLabel} berada di atas
+                      rentang tersebut (di luar biaya operasional).{" "}
+                      {results.roasKnown
+                        ? results.details.adPerformance >= 1.5
+                          ? `${roasLabel} Anda saat ini sudah di atas ambang — pertahankan!`
+                          : results.details.adPerformance > 0
+                            ? `${roasLabel} Anda berada tepat di sekitar ambang — rawan boncos, perlu dioptimasi.`
+                            : `${roasLabel} Anda masih di bawah ambang — iklan Anda kemungkinan besar boncos.`
+                        : ""}
                     </p>
                   </div>
-                </div>
+                )}
 
-                <div className="card overflow-hidden">
-                  <table className="w-full text-left border-collapse">
-                    <thead className="bg-slate-50 border-bottom border-slate-200">
-                      <tr>
-                        <th className="p-4 text-sm font-bold text-slate-700">
-                          Produk
-                        </th>
-                        <th className="p-4 text-sm font-bold text-slate-700">
-                          Status Profit
-                        </th>
-                        <th className="p-4 text-sm font-bold text-slate-700">
-                          Estimasi BEP {data.platform === "Shopee" ? "ROAS" : "ROI"} (exc. ops cost)
-                        </th>
-                        <th className="p-4 text-sm font-bold text-slate-700">
-                          Status Iklan
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {data.topProducts.map((p, i) => (
-                        <tr key={i}>
-                          <td className="p-4 text-sm font-medium">
-                            {p.name || `Produk ${i + 1}`}
-                          </td>
-                          <td className="p-4">
-                            {results.productResults[i].isProfitable ? (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                Untung
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                                Rugi
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-4 text-sm font-mono">
-                            {results.productResults[i].bep === Infinity
-                              ? "N/A"
-                              : results.productResults[i].bep.toFixed(2)}
-                          </td>
-                          <td className="p-4">
-                            {results.productResults[i].isAdGood ? (
-                              <TrendingUp
-                                size={18}
-                                className="text-green-600"
-                              />
-                            ) : (
-                              <TrendingDown
-                                size={18}
-                                className="text-red-600"
-                              />
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="flex justify-center flex-col items-center gap-6 pt-4">
-                  <div className="flex flex-col sm:flex-row justify-center gap-4 w-full max-w-2xl">
-                    <a
-                      href={`https://wa.me/6285117793478?text=${getWAMessage()}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() =>
-                        fbq.event("Contact", {
-                          content_name: "WhatsApp Consultation",
-                        })
-                      }
-                      className="flex-1 bg-[#25D366] hover:bg-[#20ba5a] text-white font-bold py-4 px-6 rounded-xl flex items-center justify-center gap-3 transition-all shadow-lg hover:shadow-green-200 shadow-green-100"
-                    >
-                      <MessageCircle size={24} />
-                      <span>Konsultasi dengan Alin</span>
-                    </a>
-                    <a
-                      href={`https://wa.me/6285117793478?text=${getWAMessage()}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() =>
-                        fbq.event("Contact", {
-                          content_name: "WhatsApp Consultation",
-                        })
-                      }
-                      className="flex-1 bg-[#25D366] hover:bg-[#20ba5a] text-white font-bold py-4 px-6 rounded-xl flex items-center justify-center gap-3 transition-all shadow-lg hover:shadow-green-200 shadow-green-100"
-                    >
-                      <MessageCircle size={24} />
-                      <span>Konsultasi dengan Inggar</span>
-                    </a>
-                  </div>
+                <div className="flex justify-center pt-4">
                   <button
                     onClick={reset}
                     className="btn-secondary flex items-center gap-2"
