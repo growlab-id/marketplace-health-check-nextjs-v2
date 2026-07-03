@@ -1,5 +1,6 @@
 // lib/capi.ts
 import crypto from "crypto";
+import { sendTelegramAlert } from "@/lib/alert";
 
 const GRAPH_VERSION = "v25.0";
 
@@ -97,11 +98,20 @@ export async function sendCapiEvent(params: SendEventParams): Promise<boolean> {
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       console.error(`[CAPI] ${eventName} failed ${res.status}: ${text}`);
+      // Surface silent CAPI failures (e.g. an expired FB_CAPI_TOKEN).
+      await sendTelegramAlert(
+        "Meta CAPI GAGAL",
+        `${eventName} ditolak Meta (HTTP ${res.status}).\n${text.slice(0, 300)}`,
+      );
       return false;
     }
     return true;
   } catch (err) {
     console.error(`[CAPI] ${eventName} error:`, err);
+    await sendTelegramAlert(
+      "Meta CAPI ERROR",
+      `${eventName}: ${err instanceof Error ? err.message : String(err)}`,
+    );
     return false;
   }
 }
