@@ -679,16 +679,18 @@ export default function MarketplaceHealthCheck() {
           >
             Marketplace <span className="text-indigo-600">Health Check</span>
           </motion.h1>
-          <motion.p
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            className="text-slate-700 text-lg font-semibold max-w-xl mx-auto"
-          >
-            {step === STEP.PLATFORM
-              ? "Dapatkan skor kesehatan toko Anda secara cepat dan akurat berdasarkan performa toko Anda"
-              : "Evaluasi kesehatan toko Anda dalam hitungan menit"}
-          </motion.p>
+          {step !== STEP.RESULTS && (
+            <motion.p
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.2 }}
+              className="text-slate-700 text-lg font-semibold max-w-xl mx-auto"
+            >
+              {step === STEP.PLATFORM
+                ? "Dapatkan skor kesehatan toko Anda secara cepat dan akurat berdasarkan performa toko Anda"
+                : "Evaluasi kesehatan toko Anda dalam hitungan menit"}
+            </motion.p>
+          )}
         </header>
 
         <ViewerBadge />
@@ -925,7 +927,7 @@ export default function MarketplaceHealthCheck() {
               <QuizScreen
                 stepKey="q-conc"
                 icon={<PieChart size={26} />}
-                question="Kira-kira berapa persen kontribusi omzet 3 produk terlarismu terhadap keseluruhan omzet?"
+                question="Berapa persen kontribusi omzet 3 produk terlaris Anda terhadap total omzet online shop Anda?"
                 options={CONCENTRATION_OPTIONS}
                 value={data.concentrationAnswer}
                 onSelect={(id) =>
@@ -942,7 +944,7 @@ export default function MarketplaceHealthCheck() {
               <QuizScreen
                 stepKey="q-margin"
                 icon={<DollarSign size={26} />}
-                question="Kira-kira secara rata-rata berapa persen keuntungan produk terlaris kamu setelah dikurangi berbagai biaya potongan platform?"
+                question="Berapa persen keuntungan produk terlaris Anda setelah dikurangi berbagai biaya potongan platform?"
                 options={MARGIN_OPTIONS}
                 value={data.marginAnswer}
                 onSelect={(id) =>
@@ -963,7 +965,7 @@ export default function MarketplaceHealthCheck() {
               <QuizScreen
                 stepKey="q-roas"
                 icon={<Target size={26} />}
-                question={`Kira-kira berapa ${roasLabel} produk terlarismu?`}
+                question={`Berapa rata-rata ${roasLabel} produk terlaris Anda dalam 1 bulan?`}
                 options={ROAS_OPTIONS}
                 value={data.roasAnswer}
                 onSelect={(id) => answerAndGo("roasAnswer", id, STEP.RESULTS)}
