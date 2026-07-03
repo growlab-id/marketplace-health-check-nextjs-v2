@@ -177,6 +177,14 @@ const genId = () =>
   Math.random().toString(36).substring(2, 15) +
   Math.random().toString(36).substring(2, 15);
 
+// Read a cookie fresh from the jar. Used at save-time so signals set by the
+// Pixel script AFTER our mount effect (notably _fbp) are still captured.
+const readCookie = (name: string): string | null => {
+  if (typeof document === "undefined") return null;
+  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]+)`));
+  return m ? decodeURIComponent(m[1]) : null;
+};
+
 // "Live viewers" badge numbers: random per visit, 20–50 range, decreasing as
 // the user advances through the funnel. Regenerated on every mount.
 function genViewerCounts(): number[] {
@@ -228,6 +236,157 @@ const fmtScore = (s: number) => s.toFixed(2).replace(/0$/, "");
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
+
+
+// ---------------------------------------------------------------------------
+// Presentational components (defined at module level so React keeps stable
+// component identities across renders — required for smooth AnimatePresence
+// exit animations).
+// ---------------------------------------------------------------------------
+
+function ViewerBadge({ counts, step }: { counts: number[] | null; step: number }) {
+  if (!counts) return null;
+  const count = counts[Math.min(step, counts.length - 1)];
+  return (
+    <div className="flex justify-center mb-6">
+      <div className="inline-flex items-center gap-2 bg-white border border-slate-200 rounded-full px-4 py-1.5 shadow-sm">
+        <span className="relative flex h-2.5 w-2.5">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+        </span>
+        <Eye size={14} className="text-slate-400" />
+        <span className="text-xs font-bold text-slate-600">
+          {count} orang sedang mengakses halaman ini
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ProgressBar({ step }: { step: number }) {
+  if (step < STEP.PROFILE || step > STEP.Q_ROAS) return null;
+  const page = step; // PROFILE=1 ... Q_ROAS=5
+  const pct = Math.round((page / QUIZ_TOTAL_PAGES) * 100);
+  return (
+    <div className="max-w-2xl mx-auto mb-6">
+      <div className="flex justify-between items-center mb-2">
+        <span className="text-xs font-bold text-slate-500">
+          Langkah {page} dari {QUIZ_TOTAL_PAGES}
+        </span>
+        <span className="text-xs font-bold text-indigo-600">{pct}%</span>
+      </div>
+      <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+        <div
+          className="bg-indigo-600 h-full rounded-full transition-all duration-500"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function QuizScreen({
+  stepKey,
+  icon,
+  question,
+  options,
+  value,
+  onSelect,
+  onBack,
+  fact,
+  provisional,
+}: {
+  stepKey: string;
+  icon: React.ReactNode;
+  question: string;
+  options: QuizOption[];
+  value: string | null;
+  onSelect: (id: string) => void;
+  onBack: () => void;
+  fact?: string;
+  provisional?: number | null;
+}) {
+  return (
+    <motion.div
+      key={stepKey}
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -20 }}
+      className="card p-6 md:p-8 max-w-2xl mx-auto"
+    >
+      {provisional !== null && provisional !== undefined && (
+        <div className="mb-6 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-5 py-4 flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-black uppercase tracking-wider text-indigo-200 flex items-center gap-1.5">
+              Skor Sementara
+              <span className="bg-amber-400 text-amber-950 rounded-full px-2 py-0.5 text-[10px]">
+                BELUM FINAL
+              </span>
+            </div>
+            <div className="text-2xl font-black">
+              {fmtScore(provisional)}
+              <span className="text-sm opacity-60">/5.0</span>
+            </div>
+          </div>
+          <p className="text-xs font-semibold text-indigo-100 text-right max-w-[180px]">
+            Selesaikan semua pertanyaan untuk melihat skor akhir Anda
+          </p>
+        </div>
+      )}
+
+      <div className="flex items-start gap-3 mb-6 text-indigo-600">
+        <div className="mt-0.5 shrink-0">{icon}</div>
+        <h2 className="text-xl font-bold text-slate-900">{question}</h2>
+      </div>
+
+      <div className="space-y-3">
+        {options.map((opt) => {
+          const selected = value === opt.id;
+          return (
+            <button
+              key={opt.id}
+              onClick={() => onSelect(opt.id)}
+              className={`w-full text-left px-5 py-4 rounded-xl border-2 font-semibold transition-all flex items-center justify-between gap-3 group ${
+                selected
+                  ? "border-indigo-600 bg-indigo-50 text-indigo-900"
+                  : "border-slate-200 bg-white text-slate-800 hover:border-indigo-400 hover:bg-indigo-50/50 active:scale-[0.99]"
+              }`}
+            >
+              <span>{opt.label}</span>
+              <ChevronRight
+                size={20}
+                className={`shrink-0 transition-all ${
+                  selected
+                    ? "text-indigo-600"
+                    : "text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-0.5"
+                }`}
+              />
+            </button>
+          );
+        })}
+      </div>
+
+      {fact && (
+        <div className="mt-6 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 flex gap-3">
+          <AlertTriangle size={18} className="text-amber-500 shrink-0 mt-0.5" />
+          <p className="text-sm text-amber-900 font-medium">
+            <span className="font-black">Tahukah Anda? </span>
+            {fact}
+          </p>
+        </div>
+      )}
+
+      <div className="mt-8">
+        <button
+          onClick={onBack}
+          className="text-slate-500 hover:text-slate-800 font-semibold text-sm flex items-center gap-1 transition-colors"
+        >
+          <ChevronLeft size={18} /> Kembali
+        </button>
+      </div>
+    </motion.div>
+  );
+}
 
 export default function MarketplaceHealthCheck() {
   const [step, setStep] = useState<number>(STEP.PLATFORM);
@@ -345,6 +504,13 @@ export default function MarketplaceHealthCheck() {
       snapshot: QuizData,
       opts: { score?: number; eventId?: string } = {},
     ) => {
+      // Hybrid capture: prefer the freshest cookies at the moment of use
+      // (the Pixel sets _fbp shortly AFTER mount), and fall back to the
+      // values captured at mount (fbc built from the URL's fbclid keeps
+      // attribution alive even when the Pixel script is blocked).
+      const freshFbp = readCookie("_fbp") || fbp;
+      const freshFbc = readCookie("_fbc") || fbc;
+
       const body = JSON.stringify({
         sheetName,
         submissionId,
@@ -362,8 +528,8 @@ export default function MarketplaceHealthCheck() {
         roasAnswer: labelOf(ROAS_OPTIONS, snapshot.roasAnswer),
         ...(opts.score !== undefined ? { score: opts.score } : {}),
         // Meta attribution + dedup signals
-        fbc,
-        fbp,
+        fbc: freshFbc,
+        fbp: freshFbp,
         eventId: opts.eventId,
         eventSourceUrl: sourceUrl,
       });
@@ -378,6 +544,9 @@ export default function MarketplaceHealthCheck() {
               Accept: "application/json",
             },
             body,
+            // Let the request outlive the page — the final answer still
+            // reaches the server even if the user closes the tab instantly.
+            keepalive: true,
           });
           if (response.ok) {
             return true;
@@ -446,8 +615,7 @@ export default function MarketplaceHealthCheck() {
       "CompleteRegistration",
       {
         content_name: "Health Check Completed",
-        value: score,
-        currency: "IDR",
+        score, // health score 0–5 as a custom property, not a monetary value
       },
       eventId,
     );
@@ -499,147 +667,10 @@ export default function MarketplaceHealthCheck() {
   // Small render helpers
   // -------------------------------------------------------------------------
 
-  const ViewerBadge = () => {
-    if (!viewerCounts) return null;
-    const count = viewerCounts[Math.min(step, viewerCounts.length - 1)];
-    return (
-      <div className="flex justify-center mb-6">
-        <div className="inline-flex items-center gap-2 bg-white border border-slate-200 rounded-full px-4 py-1.5 shadow-sm">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
-          </span>
-          <Eye size={14} className="text-slate-400" />
-          <span className="text-xs font-bold text-slate-600">
-            {count} orang sedang mengakses halaman ini
-          </span>
-        </div>
-      </div>
-    );
-  };
 
-  const ProgressBar = () => {
-    if (step < STEP.PROFILE || step > STEP.Q_ROAS) return null;
-    const page = step; // PROFILE=1 ... Q_ROAS=5
-    const pct = Math.round((page / QUIZ_TOTAL_PAGES) * 100);
-    return (
-      <div className="max-w-2xl mx-auto mb-6">
-        <div className="flex justify-between items-center mb-2">
-          <span className="text-xs font-bold text-slate-500">
-            Langkah {page} dari {QUIZ_TOTAL_PAGES}
-          </span>
-          <span className="text-xs font-bold text-indigo-600">{pct}%</span>
-        </div>
-        <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-          <div
-            className="bg-indigo-600 h-full rounded-full transition-all duration-500"
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-      </div>
-    );
-  };
 
-  const QuizScreen = ({
-    stepKey,
-    icon,
-    question,
-    options,
-    value,
-    onSelect,
-    onBack,
-    fact,
-    provisional,
-  }: {
-    stepKey: string;
-    icon: React.ReactNode;
-    question: string;
-    options: QuizOption[];
-    value: string | null;
-    onSelect: (id: string) => void;
-    onBack: () => void;
-    fact?: string;
-    provisional?: number | null;
-  }) => (
-    <motion.div
-      key={stepKey}
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }}
-      className="card p-6 md:p-8 max-w-2xl mx-auto"
-    >
-      {provisional !== null && provisional !== undefined && (
-        <div className="mb-6 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-5 py-4 flex items-center justify-between gap-3">
-          <div>
-            <div className="text-[11px] font-black uppercase tracking-wider text-indigo-200 flex items-center gap-1.5">
-              Skor Sementara
-              <span className="bg-amber-400 text-amber-950 rounded-full px-2 py-0.5 text-[10px]">
-                BELUM FINAL
-              </span>
-            </div>
-            <div className="text-2xl font-black">
-              {fmtScore(provisional)}
-              <span className="text-sm opacity-60">/5.0</span>
-            </div>
-          </div>
-          <p className="text-xs font-semibold text-indigo-100 text-right max-w-[180px]">
-            Selesaikan semua pertanyaan untuk melihat skor akhir Anda
-          </p>
-        </div>
-      )}
 
-      <div className="flex items-start gap-3 mb-6 text-indigo-600">
-        <div className="mt-0.5 shrink-0">{icon}</div>
-        <h2 className="text-xl font-bold text-slate-900">{question}</h2>
-      </div>
-
-      <div className="space-y-3">
-        {options.map((opt) => {
-          const selected = value === opt.id;
-          return (
-            <button
-              key={opt.id}
-              onClick={() => onSelect(opt.id)}
-              className={`w-full text-left px-5 py-4 rounded-xl border-2 font-semibold transition-all flex items-center justify-between gap-3 group ${
-                selected
-                  ? "border-indigo-600 bg-indigo-50 text-indigo-900"
-                  : "border-slate-200 bg-white text-slate-800 hover:border-indigo-400 hover:bg-indigo-50/50 active:scale-[0.99]"
-              }`}
-            >
-              <span>{opt.label}</span>
-              <ChevronRight
-                size={20}
-                className={`shrink-0 transition-all ${
-                  selected
-                    ? "text-indigo-600"
-                    : "text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-0.5"
-                }`}
-              />
-            </button>
-          );
-        })}
-      </div>
-
-      {fact && (
-        <div className="mt-6 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 flex gap-3">
-          <AlertTriangle size={18} className="text-amber-500 shrink-0 mt-0.5" />
-          <p className="text-sm text-amber-900 font-medium">
-            <span className="font-black">Tahukah Anda? </span>
-            {fact}
-          </p>
-        </div>
-      )}
-
-      <div className="mt-8">
-        <button
-          onClick={onBack}
-          className="text-slate-500 hover:text-slate-800 font-semibold text-sm flex items-center gap-1 transition-colors"
-        >
-          <ChevronLeft size={18} /> Kembali
-        </button>
-      </div>
-    </motion.div>
-  );
+  
 
   // -------------------------------------------------------------------------
   // Render
@@ -693,8 +724,8 @@ export default function MarketplaceHealthCheck() {
           )}
         </header>
 
-        <ViewerBadge />
-        <ProgressBar />
+        <ViewerBadge counts={viewerCounts} step={step} />
+        <ProgressBar step={step} />
 
         <main>
           <AnimatePresence mode="wait">
@@ -910,6 +941,7 @@ export default function MarketplaceHealthCheck() {
             {/* Q1 — Trend */}
             {step === STEP.Q_TREND && (
               <QuizScreen
+                key="q-trend"
                 stepKey="q-trend"
                 icon={<TrendingUp size={26} />}
                 question="Bagaimana trend / kecenderungan omzet toko Anda selama 3 bulan terakhir?"
@@ -925,6 +957,7 @@ export default function MarketplaceHealthCheck() {
             {/* Q2 — Concentration */}
             {step === STEP.Q_CONC && (
               <QuizScreen
+                key="q-conc"
                 stepKey="q-conc"
                 icon={<PieChart size={26} />}
                 question="Berapa persen kontribusi omzet 3 produk terlaris Anda terhadap total omzet online shop Anda?"
@@ -942,6 +975,7 @@ export default function MarketplaceHealthCheck() {
             {/* Q3 — Margin (tidak tahu → straight to results) */}
             {step === STEP.Q_MARGIN && (
               <QuizScreen
+                key="q-margin"
                 stepKey="q-margin"
                 icon={<DollarSign size={26} />}
                 question="Berapa persen keuntungan produk terlaris Anda setelah dikurangi berbagai biaya potongan platform?"
@@ -963,6 +997,7 @@ export default function MarketplaceHealthCheck() {
             {/* Q4 — ROAS/ROI */}
             {step === STEP.Q_ROAS && (
               <QuizScreen
+                key="q-roas"
                 stepKey="q-roas"
                 icon={<Target size={26} />}
                 question={`Berapa rata-rata ${roasLabel} produk terlaris Anda dalam 1 bulan?`}
