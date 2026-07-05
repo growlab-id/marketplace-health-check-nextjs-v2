@@ -1022,17 +1022,17 @@ export default function MarketplaceHealthCheck() {
                 key="results"
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="space-y-6"
+                className="space-y-6 pb-24 md:pb-0"
               >
-                <div className="card p-8 text-center bg-gradient-to-br from-indigo-600 to-violet-700 text-white border-none">
-                  <h2 className="text-xl font-medium opacity-90 mb-2">
+                <div className="card p-5 md:p-8 text-center bg-gradient-to-br from-indigo-600 to-violet-700 text-white border-none">
+                  <h2 className="text-lg md:text-xl font-medium opacity-90 mb-1 md:mb-2">
                     Skor Kesehatan Toko Anda
                   </h2>
                   <div className="flex justify-center gap-2 mb-4">
                     {[...Array(5)].map((_, i) => (
                       <Star
                         key={i}
-                        size={40}
+                        size={32}
                         fill={
                           i < Math.round(results.score)
                             ? "currentColor"
@@ -1046,11 +1046,11 @@ export default function MarketplaceHealthCheck() {
                       />
                     ))}
                   </div>
-                  <div className="text-6xl font-black mb-2">
+                  <div className="text-5xl md:text-6xl font-black mb-2">
                     {fmtScore(results.score)}
                     <span className="text-2xl opacity-50">/5.0</span>
                   </div>
-                  <p className="text-lg font-medium text-indigo-100">
+                  <p className="text-base md:text-lg font-medium text-indigo-100">
                     {results.score >= 4
                       ? "Sangat Sehat! Pertahankan performa Anda."
                       : results.score >= 3
@@ -1092,20 +1092,6 @@ export default function MarketplaceHealthCheck() {
                     >
                       <MessageCircle size={24} />
                       <span>Konsultasi dengan Alin</span>
-                    </a>
-                    <a
-                      href={`https://wa.me/6285117793478?text=${getWAMessage()}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() =>
-                        fbq.event("Contact", {
-                          content_name: "WhatsApp Consultation",
-                        })
-                      }
-                      className="flex-1 max-w-xs bg-[#25D366] hover:bg-[#20ba5a] text-white font-bold py-4 px-6 rounded-xl flex items-center justify-center gap-3 transition-all shadow-lg hover:shadow-green-200 shadow-green-100"
-                    >
-                      <MessageCircle size={24} />
-                      <span>Konsultasi dengan Inggar</span>
                     </a>
                   </div>
                 </div>
@@ -1250,6 +1236,28 @@ export default function MarketplaceHealthCheck() {
                   </div>
                 )}
 
+
+                <div className="flex flex-col items-center gap-3 pt-2">
+                  <p className="text-slate-600 font-semibold text-center text-sm md:text-base">
+                    Bahas langsung hasilnya lebih dalam dengan tim expert
+                    Growlab
+                  </p>
+                  <a
+                    href={`https://wa.me/6285117793478?text=${getWAMessage()}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() =>
+                      fbq.event("Contact", {
+                        content_name: "WhatsApp Consultation",
+                      })
+                    }
+                    className="w-full max-w-xs bg-[#25D366] hover:bg-[#20ba5a] text-white font-bold py-4 px-6 rounded-xl flex items-center justify-center gap-3 transition-all shadow-lg hover:shadow-green-200 shadow-green-100"
+                  >
+                    <MessageCircle size={24} />
+                    <span>Konsultasi dengan Inggar</span>
+                  </a>
+                </div>
+
                 <div className="flex justify-center pt-4">
                   <button
                     onClick={reset}
@@ -1262,6 +1270,27 @@ export default function MarketplaceHealthCheck() {
             )}
           </AnimatePresence>
         </main>
+
+        {/* Sticky CTA — mobile only, results page */}
+        {step === STEP.RESULTS && results && (
+          <div className="fixed bottom-0 left-0 right-0 z-50 p-3 bg-white/90 backdrop-blur border-t border-slate-200 md:hidden">
+            <a
+              href={`https://wa.me/6285117793478?text=${getWAMessage()}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() =>
+                fbq.event("Contact", {
+                  content_name: "WhatsApp Consultation",
+                })
+              }
+              className="w-full bg-[#25D366] hover:bg-[#20ba5a] text-white font-bold py-3.5 px-6 rounded-xl flex items-center justify-center gap-2 shadow-lg"
+            >
+              <MessageCircle size={22} />
+              <span>Konsultasi Gratis via WhatsApp</span>
+            </a>
+          </div>
+        )}
+
 
         <footer className="mt-12 text-center text-slate-400 text-sm">
           &copy; {new Date().getFullYear()} Marketplace Health Check. Dibuat
