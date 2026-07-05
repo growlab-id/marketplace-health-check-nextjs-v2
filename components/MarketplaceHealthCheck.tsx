@@ -853,29 +853,31 @@ export default function MarketplaceHealthCheck() {
                 </div>
 
                 <div className="space-y-6 mb-8">
-                  <div className="input-group">
-                    <label className="label">Siapa Nama Anda?</label>
-                    <input
-                      type="text"
-                      className="input"
-                      placeholder="Masukkan nama Anda"
-                      value={data.userName}
-                      onChange={(e) =>
-                        setData({ ...data, userName: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="input-group">
-                    <label className="label">Nama Online Shop Anda?</label>
-                    <input
-                      type="text"
-                      className="input"
-                      placeholder="Masukkan nama online shop Anda"
-                      value={data.shopName}
-                      onChange={(e) =>
-                        setData({ ...data, shopName: e.target.value })
-                      }
-                    />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="input-group">
+                      <label className="label">Siapa Nama Anda?</label>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="Masukkan nama Anda"
+                        value={data.userName}
+                        onChange={(e) =>
+                          setData({ ...data, userName: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="input-group">
+                      <label className="label">Nama Online Shop Anda?</label>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="Masukkan nama online shop Anda"
+                        value={data.shopName}
+                        onChange={(e) =>
+                          setData({ ...data, shopName: e.target.value })
+                        }
+                      />
+                    </div>
                   </div>
                   <div className="input-group">
                     <label className="label">
