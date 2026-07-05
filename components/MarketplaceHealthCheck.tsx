@@ -688,7 +688,7 @@ export default function MarketplaceHealthCheck() {
       <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="inline-flex items-center justify-center w-28 h-28 md:w-40 md:h-40 mb-4"
+            className={`inline-flex items-center justify-center ${step === STEP.PLATFORM ? "w-28 h-28 md:w-40 md:h-40" : "w-16 h-16 md:w-20 md:h-20"} mb-4`}
           >
             <img
               src="/growlab-logo.png"
@@ -704,7 +704,7 @@ export default function MarketplaceHealthCheck() {
           >
             Marketplace <span className="text-indigo-600">Health Check</span>
           </motion.h1>
-          {step !== STEP.RESULTS && (
+          {step === STEP.PLATFORM && (
             <motion.p
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
