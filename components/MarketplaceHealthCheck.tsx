@@ -744,27 +744,27 @@ export default function MarketplaceHealthCheck() {
                 exit={{ opacity: 0, y: -30 }}
                 className="space-y-12"
               >
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="grid grid-cols-2 gap-3 md:gap-8">
                   <button
                     onClick={() => handlePlatformSelect("Shopee")}
                     className="group relative card p-1 bg-white hover:shadow-2xl hover:shadow-orange-200/50 transition-all duration-500 border-none"
                   >
                     <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl" />
-                    <div className="relative p-8 flex flex-col items-center gap-6 border border-slate-100 rounded-2xl group-hover:border-orange-200 transition-colors">
-                      <div className="w-24 h-24 rounded-3xl bg-orange-50 flex items-center justify-center text-orange-600 shadow-inner group-hover:scale-110 transition-transform duration-500">
-                        <span className="text-4xl font-black">S</span>
+                    <div className="relative p-4 md:p-8 flex flex-col items-center gap-3 md:gap-6 border border-slate-100 rounded-2xl group-hover:border-orange-200 transition-colors">
+                      <div className="w-16 h-16 md:w-24 md:h-24 rounded-2xl md:rounded-3xl bg-orange-50 flex items-center justify-center text-orange-600 shadow-inner group-hover:scale-110 transition-transform duration-500">
+                        <span className="text-2xl md:text-4xl font-black">S</span>
                       </div>
                       <div className="text-center">
-                        <h3 className="text-2xl font-black text-slate-900 mb-2">
+                        <h3 className="text-lg md:text-2xl font-black text-slate-900 mb-1 md:mb-2">
                           Shopee
                         </h3>
-                        <p className="text-slate-700 text-sm font-bold px-4">
+                        <p className="hidden md:block text-slate-700 text-sm font-bold px-4">
                           segera cek kesehatan Shopee Anda sebelum semakin buruk
                           dan sulit recovery
                         </p>
                       </div>
-                      <div className="mt-6 px-8 py-3 bg-orange-600 text-white rounded-xl font-black text-xl flex items-center gap-2 shadow-lg shadow-orange-200 group-hover:bg-orange-700 transition-all group-hover:scale-105">
-                        MULAI ANALISIS <ChevronRight size={24} />
+                      <div className="mt-2 md:mt-6 px-4 md:px-8 py-2.5 md:py-3 bg-orange-600 text-white rounded-xl font-black text-sm md:text-xl flex items-center gap-1.5 md:gap-2 shadow-lg shadow-orange-200 group-hover:bg-orange-700 transition-all group-hover:scale-105">
+                        MULAI ANALISIS <ChevronRight size={18} />
                       </div>
                     </div>
                   </button>
@@ -774,21 +774,21 @@ export default function MarketplaceHealthCheck() {
                     className="group relative card p-1 bg-white hover:shadow-2xl hover:shadow-slate-300/50 transition-all duration-500 border-none"
                   >
                     <div className="absolute inset-0 bg-gradient-to-br from-slate-900/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl" />
-                    <div className="relative p-8 flex flex-col items-center gap-6 border border-slate-100 rounded-2xl group-hover:border-slate-300 transition-colors">
-                      <div className="w-24 h-24 rounded-3xl bg-slate-900 flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition-transform duration-500">
-                        <span className="text-4xl font-black">T</span>
+                    <div className="relative p-4 md:p-8 flex flex-col items-center gap-3 md:gap-6 border border-slate-100 rounded-2xl group-hover:border-slate-300 transition-colors">
+                      <div className="w-16 h-16 md:w-24 md:h-24 rounded-2xl md:rounded-3xl bg-slate-900 flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition-transform duration-500">
+                        <span className="text-2xl md:text-4xl font-black">T</span>
                       </div>
                       <div className="text-center">
-                        <h3 className="text-2xl font-black text-slate-900 mb-2">
+                        <h3 className="text-lg md:text-2xl font-black text-slate-900 mb-1 md:mb-2">
                           TikTok Shop
                         </h3>
-                        <p className="text-slate-700 text-sm font-bold px-4">
+                        <p className="hidden md:block text-slate-700 text-sm font-bold px-4">
                           segera cek kesehatan Tiktok Shop Anda sebelum semakin
                           buruk dan sulit recovery
                         </p>
                       </div>
-                      <div className="mt-6 px-8 py-3 bg-slate-900 text-white rounded-xl font-black text-xl flex items-center gap-2 shadow-lg shadow-slate-200 group-hover:bg-black transition-all group-hover:scale-105">
-                        MULAI ANALISIS <ChevronRight size={24} />
+                      <div className="mt-2 md:mt-6 px-4 md:px-8 py-2.5 md:py-3 bg-slate-900 text-white rounded-xl font-black text-sm md:text-xl flex items-center gap-1.5 md:gap-2 shadow-lg shadow-slate-200 group-hover:bg-black transition-all group-hover:scale-105">
+                        MULAI ANALISIS <ChevronRight size={18} />
                       </div>
                     </div>
                   </button>
