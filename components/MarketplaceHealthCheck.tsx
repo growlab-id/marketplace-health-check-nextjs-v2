@@ -685,15 +685,15 @@ export default function MarketplaceHealthCheck() {
         <header
           className={`mb-8 text-center transition-all duration-500 ${step === STEP.PLATFORM ? "mt-12 mb-16" : ""}`}
         >
-          <motion.div
+      <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-white border border-slate-200 mb-4 shadow-xl shadow-indigo-200 overflow-hidden"
+            className="inline-flex items-center justify-center w-40 h-40 mb-2"
           >
             <img
               src="/growlab-logo.png"
               alt="Growlab"
-              className="w-full h-full object-contain p-1.5"
+              className="w-full h-full object-contain"
             />
           </motion.div>
           <motion.div
@@ -702,7 +702,7 @@ export default function MarketplaceHealthCheck() {
             transition={{ delay: 0.05 }}
             className="mb-8"
           >
-            <span className="bg-black text-white font-black text-base md:text-lg tracking-[0.5em] uppercase px-10 py-3 rounded-2xl shadow-2xl shadow-indigo-200 inline-block border-b-4 border-indigo-800">
+            <span className="bg-black text-white font-black text-xs md:text-sm tracking-[0.4em] uppercase px-6 py-2 rounded-xl shadow-lg shadow-indigo-200 inline-block border-b-2 border-indigo-800">
               GROWLAB TOOLS
             </span>
           </motion.div>
@@ -710,7 +710,7 @@ export default function MarketplaceHealthCheck() {
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.1 }}
-            className={`${step === STEP.PLATFORM ? "text-4xl md:text-5xl" : "text-3xl"} font-black tracking-tight text-slate-900 mb-4`}
+            className={`${step === STEP.PLATFORM ? "text-2xl sm:text-4xl md:text-5xl" : "text-2xl md:text-3xl"} font-black tracking-tight text-slate-900 mb-4`}
           >
             Marketplace <span className="text-indigo-600">Health Check</span>
           </motion.h1>
