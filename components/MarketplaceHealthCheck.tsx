@@ -683,28 +683,18 @@ export default function MarketplaceHealthCheck() {
 
       <div className="max-w-4xl mx-auto relative">
         <header
-          className={`mb-8 text-center transition-all duration-500 ${step === STEP.PLATFORM ? "mt-12 mb-16" : ""}`}
+          className={`mb-8 text-center transition-all duration-500 ${step === STEP.PLATFORM ? "mt-6 mb-10 md:mt-12 md:mb-16" : ""}`}
         >
       <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="inline-flex items-center justify-center w-40 h-40 mb-2"
+            className="inline-flex items-center justify-center w-28 h-28 md:w-40 md:h-40 mb-4"
           >
             <img
               src="/growlab-logo.png"
               alt="Growlab"
               className="w-full h-full object-contain"
             />
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.05 }}
-            className="mb-8"
-          >
-            <span className="bg-black text-white font-black text-xs md:text-sm tracking-[0.4em] uppercase px-6 py-2 rounded-xl shadow-lg shadow-indigo-200 inline-block border-b-2 border-indigo-800">
-              GROWLAB TOOLS
-            </span>
           </motion.div>
           <motion.h1
             initial={{ y: 20, opacity: 0 }}
