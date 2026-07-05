@@ -717,9 +717,21 @@ export default function MarketplaceHealthCheck() {
               transition={{ delay: 0.2 }}
               className="text-slate-700 text-lg font-semibold max-w-xl mx-auto"
             >
-              {step === STEP.PLATFORM
-                ? "84% online shop kelihatan ramai padahal boncos / rugi. Cek kesehatan online shop Anda dalam 1 menit"
-                : "Evaluasi kesehatan toko Anda dalam hitungan menit"}
+              <span className="block text-2xl md:text-3xl font-black leading-snug text-slate-900">
+                <span className="text-rose-600 text-4xl md:text-5xl font-black">
+                  84%
+                </span>{" "}
+                online shop kelihatan ramai padahal{" "}
+                <span className="inline-block bg-rose-100 text-rose-700 px-2.5 py-0.5 rounded-xl">
+                  boncos / rugi
+                </span>
+              </span>
+              <span className="mt-4 flex flex-wrap items-center justify-center gap-x-2 gap-y-2 text-base md:text-lg font-bold text-slate-700">
+                Cek kesehatan online shop Anda dalam
+                <span className="inline-flex items-center gap-1.5 bg-indigo-600 text-white px-3 py-1 rounded-full text-sm md:text-base font-black shadow-lg shadow-indigo-200">
+                  <Zap size={15} /> 1 menit
+                </span>
+              </span>
             </motion.p>
           )}
         </header>
