@@ -718,7 +718,7 @@ export default function MarketplaceHealthCheck() {
               className="text-slate-700 text-lg font-semibold max-w-xl mx-auto"
             >
               {step === STEP.PLATFORM
-                ? "Dapatkan skor kesehatan toko Anda secara cepat dan akurat berdasarkan performa toko Anda"
+                ? "84% online shop kelihatan ramai padahal boncos / rugi. Cek kesehatan online shop Anda dalam 1 menit"
                 : "Evaluasi kesehatan toko Anda dalam hitungan menit"}
             </motion.p>
           )}
