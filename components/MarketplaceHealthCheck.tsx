@@ -683,12 +683,12 @@ export default function MarketplaceHealthCheck() {
 
       <div className="max-w-4xl mx-auto relative">
         <header
-          className={`mb-8 text-center transition-all duration-500 ${step === STEP.PLATFORM ? "mt-6 mb-10 md:mt-12 md:mb-16" : ""}`}
+          className={`mb-8 text-center transition-all duration-500 ${step === STEP.PLATFORM ? "mt-6 mb-10 md:mt-8 md:mb-10" : ""}`}
         >
       <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className={`inline-flex items-center justify-center ${step === STEP.PLATFORM ? "w-28 h-28 md:w-40 md:h-40" : "w-16 h-16 md:w-20 md:h-20"} mb-4`}
+            className={`inline-flex items-center justify-center ${step === STEP.PLATFORM ? "w-28 h-28 md:w-32 md:h-32" : "w-16 h-16 md:w-20 md:h-20"} mb-4`}
           >
             <img
               src="/growlab-logo.png"
@@ -742,7 +742,7 @@ export default function MarketplaceHealthCheck() {
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -30 }}
-                className="space-y-12"
+                className="space-y-8 md:space-y-10"
               >
                 <div className="grid grid-cols-2 gap-3 md:gap-8">
                   <button
@@ -750,9 +750,9 @@ export default function MarketplaceHealthCheck() {
                     className="group relative card p-1 bg-white hover:shadow-2xl hover:shadow-orange-200/50 transition-all duration-500 border-none"
                   >
                     <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl" />
-                    <div className="relative p-4 md:p-8 flex flex-col items-center gap-3 md:gap-6 border border-slate-100 rounded-2xl group-hover:border-orange-200 transition-colors">
-                      <div className="w-16 h-16 md:w-24 md:h-24 rounded-2xl md:rounded-3xl bg-orange-50 flex items-center justify-center text-orange-600 shadow-inner group-hover:scale-110 transition-transform duration-500">
-                        <span className="text-2xl md:text-4xl font-black">S</span>
+                    <div className="relative p-4 md:p-6 flex flex-col items-center gap-3 md:gap-4 border border-slate-100 rounded-2xl group-hover:border-orange-200 transition-colors">
+                      <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl md:rounded-3xl bg-orange-50 flex items-center justify-center text-orange-600 shadow-inner group-hover:scale-110 transition-transform duration-500">
+                        <span className="text-2xl md:text-3xl font-black">S</span>
                       </div>
                       <div className="text-center">
                         <h3 className="text-lg md:text-2xl font-black text-slate-900 mb-1 md:mb-2">
@@ -763,7 +763,7 @@ export default function MarketplaceHealthCheck() {
                           dan sulit recovery
                         </p>
                       </div>
-                      <div className="mt-2 md:mt-6 px-4 md:px-8 py-2.5 md:py-3 bg-orange-600 text-white rounded-xl font-black text-sm md:text-xl flex items-center gap-1.5 md:gap-2 shadow-lg shadow-orange-200 group-hover:bg-orange-700 transition-all group-hover:scale-105">
+                      <div className="mt-2 md:mt-4 px-4 md:px-8 py-2.5 md:py-3 bg-orange-600 text-white rounded-xl font-black text-sm md:text-xl flex items-center gap-1.5 md:gap-2 shadow-lg shadow-orange-200 group-hover:bg-orange-700 transition-all group-hover:scale-105">
                         MULAI ANALISIS <ChevronRight size={18} />
                       </div>
                     </div>
@@ -774,9 +774,9 @@ export default function MarketplaceHealthCheck() {
                     className="group relative card p-1 bg-white hover:shadow-2xl hover:shadow-slate-300/50 transition-all duration-500 border-none"
                   >
                     <div className="absolute inset-0 bg-gradient-to-br from-slate-900/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl" />
-                    <div className="relative p-4 md:p-8 flex flex-col items-center gap-3 md:gap-6 border border-slate-100 rounded-2xl group-hover:border-slate-300 transition-colors">
-                      <div className="w-16 h-16 md:w-24 md:h-24 rounded-2xl md:rounded-3xl bg-slate-900 flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition-transform duration-500">
-                        <span className="text-2xl md:text-4xl font-black">T</span>
+                    <div className="relative p-4 md:p-6 flex flex-col items-center gap-3 md:gap-4 border border-slate-100 rounded-2xl group-hover:border-slate-300 transition-colors">
+                      <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl md:rounded-3xl bg-slate-900 flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition-transform duration-500">
+                        <span className="text-2xl md:text-3xl font-black">T</span>
                       </div>
                       <div className="text-center">
                         <h3 className="text-lg md:text-2xl font-black text-slate-900 mb-1 md:mb-2">
@@ -787,7 +787,7 @@ export default function MarketplaceHealthCheck() {
                           buruk dan sulit recovery
                         </p>
                       </div>
-                      <div className="mt-2 md:mt-6 px-4 md:px-8 py-2.5 md:py-3 bg-slate-900 text-white rounded-xl font-black text-sm md:text-xl flex items-center gap-1.5 md:gap-2 shadow-lg shadow-slate-200 group-hover:bg-black transition-all group-hover:scale-105">
+                      <div className="mt-2 md:mt-4 px-4 md:px-8 py-2.5 md:py-3 bg-slate-900 text-white rounded-xl font-black text-sm md:text-xl flex items-center gap-1.5 md:gap-2 shadow-lg shadow-slate-200 group-hover:bg-black transition-all group-hover:scale-105">
                         MULAI ANALISIS <ChevronRight size={18} />
                       </div>
                     </div>
@@ -966,7 +966,7 @@ export default function MarketplaceHealthCheck() {
                 key="q-conc"
                 stepKey="q-conc"
                 icon={<PieChart size={26} />}
-                question="Berapa persen kontribusi omzet 3 produk terlaris Anda terhadap total omzet online shop Anda?"
+                question="Berapa % kontribusi omzet 3 produk terlaris Anda terhadap total omzet online shop Anda?"
                 options={CONCENTRATION_OPTIONS}
                 value={data.concentrationAnswer}
                 onSelect={(id) =>
@@ -984,7 +984,7 @@ export default function MarketplaceHealthCheck() {
                 key="q-margin"
                 stepKey="q-margin"
                 icon={<DollarSign size={26} />}
-                question="Berapa persen keuntungan produk terlaris Anda setelah dikurangi berbagai biaya potongan platform?"
+                question="Berapa % keuntungan produk terlaris Anda setelah dikurangi berbagai biaya potongan platform?"
                 options={MARGIN_OPTIONS}
                 value={data.marginAnswer}
                 onSelect={(id) =>
@@ -1078,7 +1078,7 @@ export default function MarketplaceHealthCheck() {
                       tim expert Growlab
                     </p>
                   </div>
-                  <div className="flex flex-col sm:flex-row justify-center gap-4">
+                  <div className="flex flex-col items-center sm:flex-row justify-center gap-4">
                     <a
                       href={`https://wa.me/6285117793478?text=${getWAMessage()}`}
                       target="_blank"
