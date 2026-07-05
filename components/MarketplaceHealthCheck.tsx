@@ -688,9 +688,13 @@ export default function MarketplaceHealthCheck() {
           <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-600 text-white mb-4 shadow-xl shadow-indigo-200"
+            className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-white border border-slate-200 mb-4 shadow-xl shadow-indigo-200 overflow-hidden"
           >
-            <Store size={32} />
+            <img
+              src="/growlab-logo.png"
+              alt="Growlab"
+              className="w-full h-full object-contain p-1.5"
+            />
           </motion.div>
           <motion.div
             initial={{ opacity: 0, y: 10 }}
