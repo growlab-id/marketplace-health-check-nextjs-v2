@@ -8,6 +8,9 @@ export const metadata: Metadata = {
 };
 
 const FB_PIXEL_ID = process.env.NEXT_PUBLIC_FB_PIXEL_ID;
+// Second pixel (e.g. Neulab). Optional — everything works with one pixel
+// if this env var is absent.
+const FB_PIXEL_ID_2 = process.env.NEXT_PUBLIC_FB_PIXEL_ID_2;
 
 export default function RootLayout({
   children,
@@ -30,7 +33,9 @@ export default function RootLayout({
                 s.parentNode.insertBefore(t,s)}(window, document,'script',
                 'https://connect.facebook.net/en_US/fbevents.js');
                 fbq('set', 'autoConfig', false, '${FB_PIXEL_ID}');
+                ${FB_PIXEL_ID_2 ? `fbq('set', 'autoConfig', false, '${FB_PIXEL_ID_2}');` : ""}
                 fbq('init', '${FB_PIXEL_ID}');
+                ${FB_PIXEL_ID_2 ? `fbq('init', '${FB_PIXEL_ID_2}');` : ""}
                 fbq('track', 'PageView');
               `}
             </Script>
@@ -42,6 +47,15 @@ export default function RootLayout({
                 src={`https://www.facebook.com/tr?id=${FB_PIXEL_ID}&ev=PageView&noscript=1`}
                 alt=""
               />
+              {FB_PIXEL_ID_2 && (
+                <img
+                  height="1"
+                  width="1"
+                  style={{ display: "none" }}
+                  src={`https://www.facebook.com/tr?id=${FB_PIXEL_ID_2}&ev=PageView&noscript=1`}
+                  alt=""
+                />
+              )}
             </noscript>
           </>
         )}
