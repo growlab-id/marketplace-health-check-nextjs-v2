@@ -22,6 +22,21 @@ const ALLOWED_SHEETS = new Set([
 const cap = (v: unknown, max = 200): string =>
   typeof v === "string" ? v.slice(0, max) : "";
 
+// E1 — normalisasi & validasi nomor WA di sisi server (validasi browser
+// bisa dilewati). Nomor yang gagal TETAP disimpan, hanya ditandai.
+function normalizePhone(raw: unknown): string {
+  const digits = typeof raw === "string" ? raw.replace(/\D/g, "") : "";
+  if (!digits) return "";
+  if (digits.startsWith("628")) return "0" + digits.slice(2);
+  return digits;
+}
+
+function isPhoneValid(p: string): boolean {
+  if (!p.startsWith("08") || p.length < 10 || p.length > 13) return false;
+  if (/^08(\d)\1+$/.test(p)) return false;
+  return true;
+}
+
 // v1 (legacy form with per-product numbers) — kept for archival compatibility.
 const EXPECTED_HEADERS_V1 = [
   "Timestamp", "SubmissionId", "Platform", "Name", "Shop Name", "Phone",
@@ -38,6 +53,8 @@ const EXPECTED_HEADERS_V2 = [
   "Timestamp", "SubmissionId", "Platform", "Name", "Shop Name", "Phone",
   "GMV Answer",
   "Trend Answer", "Concentration Answer", "Margin Answer", "ROAS Answer",
+  "Ad Budget Answer",
+  "Status Nomor",
   "Final Score"
 ];
 
@@ -182,7 +199,7 @@ export async function POST(req: NextRequest) {
       Platform: cap(data.platform, 30),
       Name: cap(data.userName),
       "Shop Name": cap(data.shopName),
-      Phone: cap(data.phoneNumber, 30),
+      Phone: cap(normalizePhone(data.phoneNumber), 30),
     };
 
     const finalScore =
@@ -198,6 +215,10 @@ export async function POST(req: NextRequest) {
           "Concentration Answer": cap(data.concentrationAnswer, 100),
           "Margin Answer": cap(data.marginAnswer, 100),
           "ROAS Answer": cap(data.roasAnswer, 100),
+          "Ad Budget Answer": cap(data.adBudgetAnswer, 100),
+          "Status Nomor": isPhoneValid(normalizePhone(data.phoneNumber))
+            ? ""
+            : "nomor_tidak_valid",
           "Final Score": finalScore,
         }
       : {
