@@ -81,6 +81,15 @@ const MARGIN_OPTIONS: QuizOption[] = [
   { id: "tidak_tahu", label: "Tidak tahu", short: "Tidak Diketahui", points: 0 },
 ];
 
+const BUDGET_OPTIONS: QuizOption[] = [
+  { id: "di_bawah_1jt", label: "Di bawah Rp1 juta", short: "< 1 jt", points: 0 },
+  { id: "1_5jt", label: "Rp1 – 5 juta", short: "1–5 jt", points: 0 },
+  { id: "5_15jt", label: "Rp5 – 15 juta", short: "5–15 jt", points: 0 },
+  { id: "15_50jt", label: "Rp15 – 50 juta", short: "15–50 jt", points: 0 },
+  { id: "di_atas_50jt", label: "Di atas Rp50 juta", short: "> 50 jt", points: 0 },
+  { id: "tidak_beriklan", label: "Tidak beriklan", short: "Tidak beriklan", points: 0 },
+];
+
 const ROAS_OPTIONS: QuizOption[] = [
   { id: "di_bawah_5", label: "Di bawah 5", short: "< 5", points: 0 },
   { id: "5_7", label: "5 – 7", short: "5–7", points: 0 },
@@ -159,6 +168,7 @@ interface QuizData {
   concentrationAnswer: string | null;
   marginAnswer: string | null;
   roasAnswer: string | null;
+  adBudgetAnswer: string | null;
 }
 
 const INITIAL_DATA: QuizData = {
@@ -171,11 +181,41 @@ const INITIAL_DATA: QuizData = {
   concentrationAnswer: null,
   marginAnswer: null,
   roasAnswer: null,
+  adBudgetAnswer: null,
 };
 
 const genId = () =>
   Math.random().toString(36).substring(2, 15) +
   Math.random().toString(36).substring(2, 15);
+
+// ---------------------------------------------------------------------------
+// E1 — Normalisasi & validasi nomor WhatsApp.
+// Normalisasi hanya dipakai saat MENYIMPAN; yang user ketik tidak diubah
+// di layar supaya tidak membingungkan saat mengetik.
+// ---------------------------------------------------------------------------
+
+/** "+62 812-3456-789" / "62812..." -> "0812..." */
+export function normalizePhone(raw: string): string {
+  const digits = (raw || "").replace(/\D/g, "");
+  if (!digits) return "";
+  // "62" dianggap kode negara hanya kalau diikuti angka 8 (semua nomor HP
+  // Indonesia mulai dengan 8 setelah kode negara).
+  if (digits.startsWith("628")) return "0" + digits.slice(2);
+  return digits;
+}
+
+/** null = valid, selain itu = pesan error untuk ditampilkan. */
+export function validatePhone(raw: string): string | null {
+  const p = normalizePhone(raw);
+  if (!p) return "Nomor WhatsApp belum diisi.";
+  if (!p.startsWith("08") || p.length < 10 || p.length > 13)
+    return "Nomor WhatsApp belum valid. Pastikan diawali 08 dan berisi 10–13 angka.";
+  // Tolak kalau angka setelah "08" semuanya sama (08111111111). Pola
+  // berurutan seperti 08123456789 TIDAK ditolak — itu nomor asli yang umum.
+  if (/^08(\d)\1+$/.test(p))
+    return "Nomor WhatsApp belum valid. Pastikan nomornya benar.";
+  return null;
+}
 
 // Read a cookie fresh from the jar. Used at save-time so signals set by the
 // Pixel script AFTER our mount effect (notably _fbp) are still captured.
@@ -232,6 +272,346 @@ function calculateScoreV2(d: QuizData) {
 }
 
 const fmtScore = (s: number) => s.toFixed(2).replace(/0$/, "");
+
+// ---------------------------------------------------------------------------
+// E4 — Kalkulator kerugian iklan.
+// Hasil per bulan = budget x (ROAS x margin - 1). Dihitung dari 8 kombinasi
+// batas bawah/atas, diambil nilai terkecil & terbesar, dibulatkan ke Rp100rb.
+// ---------------------------------------------------------------------------
+
+const BUDGET_RANGE: Record<string, [number, number]> = {
+  di_bawah_1jt: [500000, 1000000],
+  "1_5jt": [1000000, 5000000],
+  "5_15jt": [5000000, 15000000],
+  "15_50jt": [15000000, 50000000],
+  di_atas_50jt: [50000000, 50000000],
+};
+const ROAS_RANGE: Record<string, [number, number]> = {
+  di_bawah_5: [2, 5],
+  "5_7": [5, 7],
+  "7_10": [7, 10],
+  "10_20": [10, 20],
+  di_atas_20: [20, 25],
+};
+const MARGIN_RANGE: Record<string, [number, number]> = {
+  di_bawah_5: [0.02, 0.05],
+  "5_10": [0.05, 0.1],
+  "10_15": [0.1, 0.15],
+  "15_20": [0.15, 0.2],
+  di_atas_20: [0.2, 0.25],
+};
+
+/** Bulatkan ke Rp100 ribu terdekat berdasarkan besarannya (bukan tandanya). */
+const roundTo100k = (v: number) =>
+  Math.sign(v) * Math.round(Math.abs(v) / 100000) * 100000;
+
+/** "Rp1,5 juta" / "Rp800 ribu" */
+function fmtRupiahShort(v: number): string {
+  const abs = Math.abs(v);
+  if (abs >= 1000000) {
+    const juta = abs / 1000000;
+    const teks =
+      juta % 1 === 0 ? String(juta) : juta.toFixed(1).replace(".", ",");
+    return `Rp${teks} juta`;
+  }
+  return `Rp${Math.round(abs / 1000)} ribu`;
+}
+
+function calcAdResult(
+  budgetId: string | null,
+  marginId: string | null,
+  roasId: string | null,
+) {
+  if (!budgetId) return null;
+  if (budgetId === "tidak_beriklan") return { kind: "tidak_beriklan" as const };
+  const b = BUDGET_RANGE[budgetId];
+  const m = MARGIN_RANGE[marginId ?? ""];
+  const r = ROAS_RANGE[roasId ?? ""];
+  if (!b) return null;
+  if (!m || !r) return { kind: "tidak_diketahui" as const };
+
+  const values: number[] = [];
+  for (const bv of b) for (const rv of r) for (const mv of m) values.push(bv * (rv * mv - 1));
+  const lo = roundTo100k(Math.min(...values));
+  const hi = roundTo100k(Math.max(...values));
+
+  if (lo < 0 && hi < 0)
+    return {
+      kind: "rugi" as const,
+      teks: `Estimasi: iklanmu rugi sekitar ${fmtRupiahShort(hi)}–${fmtRupiahShort(lo)} per bulan.`,
+    };
+  if (lo >= 0 && hi >= 0)
+    return {
+      kind: "untung" as const,
+      teks: `Estimasi: iklanmu untung sekitar ${fmtRupiahShort(lo)}–${fmtRupiahShort(hi)} per bulan, sebelum biaya operasional.`,
+    };
+  return {
+    kind: "impas" as const,
+    teks: `Estimasi: iklanmu ada di sekitar titik impas — antara rugi ${fmtRupiahShort(lo)} dan untung ${fmtRupiahShort(hi)} per bulan. Selisih kecil di ROAS menentukan untung atau rugi.`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// E3 — Diagnosis halaman hasil: label skor, status per kartu, langkah pertama,
+// masalah terbesar, dan peringatan kombinasi.
+// ---------------------------------------------------------------------------
+
+type CardStatus = "hijau" | "kuning" | "merah";
+
+const STATUS_STYLE: Record<
+  CardStatus,
+  { chip: string; bar: string; label: string }
+> = {
+  hijau: {
+    chip: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    bar: "bg-emerald-500",
+    label: "Aman",
+  },
+  kuning: {
+    chip: "bg-amber-50 text-amber-800 border-amber-200",
+    bar: "bg-amber-500",
+    label: "Perlu Dicek",
+  },
+  merah: {
+    chip: "bg-rose-50 text-rose-700 border-rose-200",
+    bar: "bg-rose-500",
+    label: "Bahaya",
+  },
+};
+
+const UNKNOWN_STEP =
+  "Cek angka ini di dashboard seller center-mu hari ini, lalu ulangi analisis.";
+
+interface DiagCard {
+  key: "tren" | "konsentrasi" | "profit" | "iklan";
+  title: string;
+  status: CardStatus;
+  step: string;
+}
+
+function scoreLabel(score: number) {
+  if (score >= 4)
+    return {
+      label: "Sehat",
+      line: "Tokomu dalam kondisi baik. Ada 1 hal yang bisa membuatnya lebih kuat.",
+    };
+  if (score >= 3)
+    return {
+      label: "Waspada",
+      line: "Tokomu berjalan, tapi ada risiko yang belum terlihat di angka omzet.",
+    };
+  if (score >= 2)
+    return {
+      label: "Berisiko",
+      line: "Ada kebocoran yang perlu segera ditutup sebelum makin mahal.",
+    };
+  return {
+    label: "Kritis",
+    line: "Kemungkinan besar tokomu sedang rugi tanpa disadari.",
+  };
+}
+
+const MARGIN_RANK: Record<string, number> = {
+  di_bawah_5: 1,
+  "5_10": 2,
+  "10_15": 3,
+  "15_20": 4,
+  di_atas_20: 5,
+};
+const ROAS_RANK: Record<string, number> = {
+  di_bawah_5: 1,
+  "5_7": 2,
+  "7_10": 3,
+  "10_20": 4,
+  di_atas_20: 5,
+};
+
+function buildDiagnosis(
+  d: QuizData,
+  roasLabel: string,
+  bepText: string | null,
+) {
+  const m = MARGIN_RANK[d.marginAnswer ?? ""] ?? 0;
+  const r = ROAS_RANK[d.roasAnswer ?? ""] ?? 0;
+  const bep = bepText ?? "BEP";
+
+  // --- Tren Omzet ---
+  let tren: DiagCard;
+  if (d.trendAnswer === "konsisten_naik")
+    tren = {
+      key: "tren",
+      title: "Tren Omzet",
+      status: "hijau",
+      step: "Pastikan stok 3 produk terlarismu cukup untuk 30 hari ke depan.",
+    };
+  else if (d.trendAnswer === "fluktuatif")
+    tren = {
+      key: "tren",
+      title: "Tren Omzet",
+      status: "kuning",
+      step: "Catat tanggal omzet tertinggi dan terendah 3 bulan terakhir. Kalau puncaknya selalu di tanggal campaign, tokomu bergantung pada campaign.",
+    };
+  else if (d.trendAnswer === "konsisten_turun")
+    tren = {
+      key: "tren",
+      title: "Tren Omzet",
+      status: "merah",
+      step: "Bandingkan penjualan 3 produk terlarismu bulan ini dengan 3 bulan lalu. Mulai perbaikan dari produk yang turunnya paling dalam.",
+    };
+  else
+    tren = {
+      key: "tren",
+      title: "Tren Omzet",
+      status: "merah",
+      step: UNKNOWN_STEP,
+    };
+
+  // --- Ketergantungan Produk ---
+  let konsentrasi: DiagCard;
+  if (d.concentrationAnswer === "di_bawah_50")
+    konsentrasi = {
+      key: "konsentrasi",
+      title: "Ketergantungan Produk",
+      status: "hijau",
+      step: "Cek produk mana yang paling efisien di iklan, lalu beri porsi budget lebih besar.",
+    };
+  else if (d.concentrationAnswer === "50_75")
+    konsentrasi = {
+      key: "konsentrasi",
+      title: "Ketergantungan Produk",
+      status: "kuning",
+      step: "Siapkan satu produk cadangan untuk setiap produk terlarismu.",
+    };
+  else if (d.concentrationAnswer === "di_atas_75")
+    konsentrasi = {
+      key: "konsentrasi",
+      title: "Ketergantungan Produk",
+      status: "merah",
+      step: "Pilih satu produk keempat dengan rating bagus dan mulai beri porsi iklan kecil minggu ini.",
+    };
+  else
+    konsentrasi = {
+      key: "konsentrasi",
+      title: "Ketergantungan Produk",
+      status: "merah",
+      step: UNKNOWN_STEP,
+    };
+
+  // --- Profitabilitas Produk ---
+  let profit: DiagCard;
+  if (m === 0)
+    profit = {
+      key: "profit",
+      title: "Profitabilitas Produk",
+      status: "merah",
+      step: UNKNOWN_STEP,
+    };
+  else if (m === 1)
+    profit = {
+      key: "profit",
+      title: "Profitabilitas Produk",
+      status: "merah",
+      step: "Hitung ulang batas diskon produk terlarismu. Diskon campaign tidak boleh melebihi marginmu, atau setiap order justru rugi.",
+    };
+  else if (m === 2)
+    profit = {
+      key: "profit",
+      title: "Profitabilitas Produk",
+      status: "merah",
+      step: "Dengan margin 5–10%, satu diskon campaign 8% saja sudah cukup membuat order rugi. Hitung ulang batas diskonmu.",
+    };
+  else if (m === 3)
+    profit = {
+      key: "profit",
+      title: "Profitabilitas Produk",
+      status: "kuning",
+      step: "Cek biaya yang masih bisa ditekan: subsidi ongkir, voucher toko, atau biaya kemasan.",
+    };
+  else
+    profit = {
+      key: "profit",
+      title: "Profitabilitas Produk",
+      status: "hijau",
+      step: `Marginmu punya ruang untuk menaikkan iklan. Pastikan ${roasLabel} tetap di atas ${bep}.`,
+    };
+
+  // --- Efisiensi Iklan (m + r > 6 aman, = 6 borderline, < 6 di bawah BEP) ---
+  let iklan: DiagCard;
+  if (m === 0 || r === 0)
+    iklan = {
+      key: "iklan",
+      title: "Efisiensi Iklan",
+      status: "merah",
+      step: UNKNOWN_STEP,
+    };
+  else if (m + r > 6)
+    iklan = {
+      key: "iklan",
+      title: "Efisiensi Iklan",
+      status: "hijau",
+      step: `Naikkan budget bertahap, paling banyak 20% per minggu, sambil memantau ${roasLabel}.`,
+    };
+  else if (m + r === 6)
+    iklan = {
+      key: "iklan",
+      title: "Efisiensi Iklan",
+      status: "kuning",
+      step: `Pisahkan kampanye dengan ${roasLabel} di atas dan di bawah ${bep}, lalu pindahkan budget ke yang di atas.`,
+    };
+  else
+    iklan = {
+      key: "iklan",
+      title: "Efisiensi Iklan",
+      status: "merah",
+      step: `Turunkan atau hentikan kampanye dengan ${roasLabel} di bawah ${bep} mulai hari ini.`,
+    };
+
+  const cards: DiagCard[] = [tren, konsentrasi, profit, iklan];
+
+  // --- Masalah terbesar (ambil yang pertama terpenuhi) ---
+  const marginUnknown = d.marginAnswer === "tidak_tahu" || d.marginAnswer === null;
+  const roasUnknown = d.roasAnswer === "tidak_tahu" || d.roasAnswer === null;
+  let biggest: DiagCard;
+  if (marginUnknown || roasUnknown)
+    biggest = marginUnknown ? profit : iklan;
+  else if (iklan.status === "merah") biggest = iklan;
+  else if (profit.status === "merah") biggest = profit;
+  else if (tren.status === "merah") biggest = tren;
+  else if (konsentrasi.status === "merah") biggest = konsentrasi;
+  else {
+    const kuning = [iklan, profit, tren, konsentrasi].find(
+      (c) => c.status === "kuning",
+    );
+    biggest = kuning ?? iklan;
+  }
+  const allGreen = cards.every((c) => c.status === "hijau");
+
+  // --- Peringatan kombinasi (maksimal satu) ---
+  const unknownCount = [
+    d.trendAnswer,
+    d.concentrationAnswer,
+    d.marginAnswer,
+    d.roasAnswer,
+  ].filter((a) => a === "tidak_tahu" || a === null).length;
+  const omzetBesar =
+    d.gmvAnswer === "50_100jt" || d.gmvAnswer === "di_atas_100jt";
+
+  let warning: string | null = null;
+  if (profit.status === "merah" && iklan.status === "merah" && !marginUnknown && !roasUnknown)
+    warning =
+      "Margin tipis dan " + roasLabel + " di bawah BEP: iklanmu kemungkinan besar sedang menggerus laba.";
+  else if (d.trendAnswer === "konsisten_turun" && d.concentrationAnswer === "di_atas_75")
+    warning =
+      "Omzet turun dan bergantung pada sedikit produk. Kalau satu produk bermasalah, penurunannya bisa jauh lebih cepat.";
+  else if (m > 0 && m <= 2 && omzetBesar)
+    warning =
+      "Omzet besar dengan margin tipis: satu campaign yang salah bisa menghapus laba sebulan.";
+  else if (unknownCount >= 2)
+    warning =
+      "Kamu mengelola toko tanpa melihat angka kuncinya. Ini risiko terbesar tokomu saat ini.";
+
+  return { cards, biggest, warning, allGreen };
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -517,7 +897,7 @@ export default function MarketplaceHealthCheck() {
         platform: snapshot.platform,
         userName: snapshot.userName,
         shopName: snapshot.shopName,
-        phoneNumber: snapshot.phoneNumber,
+        phoneNumber: normalizePhone(snapshot.phoneNumber),
         gmvAnswer: labelOf(GMV_OPTIONS, snapshot.gmvAnswer),
         trendAnswer: labelOf(TREND_OPTIONS, snapshot.trendAnswer),
         concentrationAnswer: labelOf(
@@ -526,6 +906,7 @@ export default function MarketplaceHealthCheck() {
         ),
         marginAnswer: labelOf(MARGIN_OPTIONS, snapshot.marginAnswer),
         roasAnswer: labelOf(ROAS_OPTIONS, snapshot.roasAnswer),
+        adBudgetAnswer: labelOf(BUDGET_OPTIONS, snapshot.adBudgetAnswer),
         ...(opts.score !== undefined ? { score: opts.score } : {}),
         // Meta attribution + dedup signals
         fbc: freshFbc,
@@ -626,6 +1007,18 @@ export default function MarketplaceHealthCheck() {
     setStep(STEP.RESULTS);
   };
 
+  // E4: jawaban budget disimpan ulang bersama snapshot penuh. event_id tetap
+  // sama dengan CompleteRegistration, jadi Meta tidak menghitung konversi baru.
+  const handleBudgetSelect = (optionId: string) => {
+    const next = { ...data, adBudgetAnswer: optionId };
+    setData(next);
+    const { score } = calculateScoreV2(next);
+    saveToSheet("full_submit_v2", next, {
+      score,
+      eventId: `CompleteRegistration_${submissionId}`,
+    });
+  };
+
   const reset = () => {
     try {
       localStorage.removeItem(SESSION_KEY);
@@ -645,6 +1038,22 @@ export default function MarketplaceHealthCheck() {
 
   const roasLabel = data.platform === "Shopee" ? "ROAS" : "ROI";
 
+  // E1: pesan error nomor WA, baru muncul setelah user selesai mengetik
+  const [phoneTouched, setPhoneTouched] = useState(false);
+  const phoneError = phoneTouched ? validatePhone(data.phoneNumber) : null;
+
+  // E4: hasil kalkulator kerugian iklan
+  const adResult = useMemo(
+    () => calcAdResult(data.adBudgetAnswer, data.marginAnswer, data.roasAnswer),
+    [data.adBudgetAnswer, data.marginAnswer, data.roasAnswer],
+  );
+
+  // E3: diagnosis halaman hasil (hanya dihitung saat hasil tampil)
+  const diagnosis = useMemo(
+    () => (results ? buildDiagnosis(data, roasLabel, results.bepText) : null),
+    [results, data, roasLabel],
+  );
+
   // Provisional score: shown on quiz pages once at least one answer exists.
   const hasStartedQuiz =
     data.trendAnswer !== null ||
@@ -659,7 +1068,7 @@ export default function MarketplaceHealthCheck() {
   const getWAMessage = () => {
     if (!results) return "";
     return encodeURIComponent(
-      `Halo Kak,\n\nSaya baru saja melakukan Marketplace Health Check dan ingin konsultasi terkait bisnis saya.\n\n*Profil Online Shop:*\n- Nama: ${data.userName}\n- Platform: ${data.platform}\n- Nama Online Shop: ${data.shopName}\n- Rata-rata Omzet/Bulan: ${shortOf(GMV_OPTIONS, data.gmvAnswer) || "-"}\n\n*Hasil Analisis Online Shop Saya:*\n- Skor Kesehatan: ${fmtScore(results.score)}/5.0\n- Tren Omzet: ${shortOf(TREND_OPTIONS, data.trendAnswer) || "-"}\n- Kontribusi Top 3 Produk: ${shortOf(CONCENTRATION_OPTIONS, data.concentrationAnswer) || "-"}\n- Margin Produk Terlaris: ${shortOf(MARGIN_OPTIONS, data.marginAnswer) || "-"}\n- ${roasLabel} Produk Terlaris: ${shortOf(ROAS_OPTIONS, data.roasAnswer) || "-"}`,
+      `Halo Kak,\n\nSaya baru saja melakukan Marketplace Health Check dan ingin konsultasi terkait bisnis saya.\n\n*Profil Online Shop:*\n- Nama: ${data.userName}\n- Platform: ${data.platform}\n- Nama Online Shop: ${data.shopName}\n- Rata-rata Omzet/Bulan: ${shortOf(GMV_OPTIONS, data.gmvAnswer) || "-"}\n\n*Hasil Analisis Online Shop Saya:*\n- Skor Kesehatan: ${fmtScore(results.score)}/5.0\n- Tren Omzet: ${shortOf(TREND_OPTIONS, data.trendAnswer) || "-"}\n- Kontribusi Top 3 Produk: ${shortOf(CONCENTRATION_OPTIONS, data.concentrationAnswer) || "-"}\n- Margin Produk Terlaris: ${shortOf(MARGIN_OPTIONS, data.marginAnswer) || "-"}\n- ${roasLabel} Produk Terlaris: ${shortOf(ROAS_OPTIONS, data.roasAnswer) || "-"}${diagnosis ? `\n- Masalah Terbesar: ${diagnosis.biggest.title} — ${diagnosis.biggest.step}` : ""}${adResult && "teks" in adResult ? `\n- ${adResult.teks}` : ""}`,
     );
   };
 
@@ -885,16 +1294,30 @@ export default function MarketplaceHealthCheck() {
                     </label>
                     <input
                       type="tel"
-                      inputMode="numeric"
-                      className="input"
+                      inputMode="tel"
+                      className={`input ${phoneError ? "border-rose-400 focus:border-rose-500" : ""}`}
                       placeholder="Contoh: 081234567890"
                       value={data.phoneNumber}
                       onChange={(e) => {
-                        const val = e.target.value.replace(/\D/g, "");
+                        // Biarkan apa yang diketik user apa adanya (angka, +,
+                        // spasi, strip). Normalisasi dilakukan saat menyimpan.
+                        const val = e.target.value.replace(/[^\d+\-\s.]/g, "");
                         setData({ ...data, phoneNumber: val });
+                        if (phoneTouched) setPhoneTouched(false);
                       }}
+                      onBlur={() => setPhoneTouched(true)}
                     />
+                    {phoneError && (
+                      <p className="mt-2 text-sm font-semibold text-rose-600">
+                        {phoneError}
+                      </p>
+                    )}
                   </div>
+                  <p className="-mt-3 text-xs text-slate-500 font-medium">
+                    Hasil analisis dan tips lanjutan akan disampaikan oleh Tim
+                    Growlab ke WhatsApp kamu ya.
+                  </p>
+
                   <div className="input-group">
                     <label className="label">
                       Berapa rata-rata omzet / GMV per bulan online shop Anda?
@@ -936,7 +1359,7 @@ export default function MarketplaceHealthCheck() {
                     disabled={
                       !data.userName ||
                       !data.shopName ||
-                      !data.phoneNumber ||
+                      validatePhone(data.phoneNumber) !== null ||
                       !data.gmvAnswer
                     }
                   >
@@ -1028,7 +1451,7 @@ export default function MarketplaceHealthCheck() {
               >
                 <div className="card p-5 md:p-8 text-center bg-gradient-to-br from-indigo-600 to-violet-700 text-white border-none">
                   <h2 className="text-lg md:text-xl font-medium opacity-90 mb-1 md:mb-2">
-                    Skor Kesehatan Toko Anda
+                    Skor Kesehatan Tokomu
                   </h2>
                   <div className="flex justify-center gap-2 mb-4">
                     {[...Array(5)].map((_, i) => (
@@ -1052,23 +1475,49 @@ export default function MarketplaceHealthCheck() {
                     {fmtScore(results.score)}
                     <span className="text-2xl opacity-50">/5.0</span>
                   </div>
-                  <p className="text-base md:text-lg font-medium text-indigo-100">
-                    {results.score >= 4
-                      ? "Sangat Sehat! Pertahankan performa Anda."
-                      : results.score >= 3
-                        ? "Cukup Sehat. Ada beberapa area yang perlu ditingkatkan."
-                        : results.score >= 2
-                          ? "Kurang Sehat. Segera lakukan optimasi pada toko Anda."
-                          : "Kritis! Toko Anda memerlukan perbaikan menyeluruh."}
+                  <div className="inline-flex items-center gap-2 bg-white/15 border border-white/25 rounded-full px-4 py-1.5 mb-3">
+                    <span className="text-sm md:text-base font-black uppercase tracking-wider">
+                      {scoreLabel(results.score).label}
+                    </span>
+                  </div>
+                  <p className="text-base md:text-lg font-medium text-indigo-100 max-w-md mx-auto">
+                    {scoreLabel(results.score).line}
                   </p>
                   {!results.marginKnown && (
                     <p className="mt-4 text-sm font-semibold text-indigo-100/90 bg-white/10 rounded-xl px-4 py-3 inline-block">
-                      Skor profitabilitas & efisiensi iklan belum bisa dinilai
-                      karena margin belum diketahui — ini sendiri adalah tanda
-                      bahaya untuk kesehatan toko Anda.
+                      Profitabilitas & efisiensi iklan belum bisa dinilai karena
+                      margin tokomu belum diketahui — dan itu sendiri sudah jadi
+                      tanda bahaya.
                     </p>
                   )}
                 </div>
+
+                {diagnosis && (
+                  <div className="card p-5 md:p-6 border-l-4 border-l-rose-500">
+                    <div className="flex items-center gap-2 mb-2 text-rose-600">
+                      <AlertTriangle size={20} className="shrink-0" />
+                      <h3 className="font-black text-sm uppercase tracking-wider">
+                        {diagnosis.allGreen
+                          ? "Peluang Terbesarmu"
+                          : "Masalah Terbesarmu"}
+                      </h3>
+                    </div>
+                    <p className="text-lg md:text-xl font-black text-slate-900 mb-2">
+                      {diagnosis.biggest.title}
+                    </p>
+                    <p className="text-sm md:text-base text-slate-700 font-medium">
+                      <span className="font-black text-slate-900">
+                        Langkah pertama:{" "}
+                      </span>
+                      {diagnosis.biggest.step}
+                    </p>
+                    {diagnosis.warning && (
+                      <p className="mt-4 text-sm font-semibold text-rose-900 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3">
+                        {diagnosis.warning}
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <div className="space-y-6 py-4">
                   <div className="text-center space-y-2">
@@ -1076,7 +1525,7 @@ export default function MarketplaceHealthCheck() {
                       Butuh Bantuan Lebih Lanjut?
                     </h3>
                     <p className="text-slate-600 font-medium">
-                      Konsultasikan hasil Marketplace Health Check Anda dengan
+                      Konsultasikan hasil Marketplace Health Check kamu dengan
                       tim expert Growlab
                     </p>
                   </div>
@@ -1098,146 +1547,194 @@ export default function MarketplaceHealthCheck() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="card p-6">
-                    <div className="flex items-center gap-2 mb-4 text-slate-900">
-                      <TrendingUp size={20} className="text-indigo-600" />
-                      <h3 className="font-bold">Tren Omzet</h3>
-                    </div>
-                    <div className="flex items-end gap-2 mb-2">
-                      <div className="text-3xl font-bold">
-                        {shortOf(TREND_OPTIONS, data.trendAnswer) || "-"}
-                      </div>
-                      <div className="text-sm text-slate-500 mb-1">
-                        +{results.details.trend} poin
-                      </div>
-                    </div>
-                    <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                      <div
-                        className="bg-indigo-600 h-full transition-all"
-                        style={{
-                          width: `${(results.details.trend / 1) * 100}%`,
-                        }}
-                      ></div>
-                    </div>
-                  </div>
-
-                  <div className="card p-6">
-                    <div className="flex items-center gap-2 mb-4 text-slate-900">
-                      <AlertCircle size={20} className="text-indigo-600" />
-                      <h3 className="font-bold">Ketergantungan Produk</h3>
-                    </div>
-                    <div className="flex items-end gap-2 mb-2">
-                      <div className="text-3xl font-bold">
-                        {shortOf(
-                          CONCENTRATION_OPTIONS,
-                          data.concentrationAnswer,
-                        ) || "-"}
-                      </div>
-                      <div className="text-sm text-slate-500 mb-1">
-                        +{results.details.concentration} poin
-                      </div>
-                    </div>
-                    <p className="text-xs text-slate-500 mb-2">
-                      Kontribusi Top 3 produk terhadap total omzet
-                    </p>
-                    <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                      <div
-                        className="bg-indigo-600 h-full transition-all"
-                        style={{
-                          width: `${(results.details.concentration / 1) * 100}%`,
-                        }}
-                      ></div>
-                    </div>
-                  </div>
-
-                  <div className="card p-6">
-                    <div className="flex items-center gap-2 mb-4 text-slate-900">
-                      <DollarSign size={20} className="text-indigo-600" />
-                      <h3 className="font-bold">Profitabilitas Produk</h3>
-                    </div>
-                    <div className="flex items-end gap-2 mb-2">
-                      <div className="text-3xl font-bold">
-                        {shortOf(MARGIN_OPTIONS, data.marginAnswer) || "-"}
-                      </div>
-                      <div className="text-sm text-slate-500 mb-1">
-                        +{results.details.profitability} poin
-                      </div>
-                    </div>
-                    <p className="text-xs text-slate-500 mb-2">
-                      Margin produk terlaris setelah biaya potongan platform
-                    </p>
-                    <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                      <div
-                        className="bg-indigo-600 h-full transition-all"
-                        style={{
-                          width: `${(results.details.profitability / 1.5) * 100}%`,
-                        }}
-                      ></div>
-                    </div>
-                  </div>
-
-                  <div className="card p-6">
-                    <div className="flex items-center gap-2 mb-4 text-slate-900">
-                      <BarChart3 size={20} className="text-indigo-600" />
-                      <h3 className="font-bold">Efisiensi Iklan</h3>
-                    </div>
-                    <div className="flex items-end gap-2 mb-2">
-                      <div className="text-3xl font-bold">
-                        {!results.marginKnown
-                          ? "Tidak Dinilai"
-                          : !results.roasKnown
+                {diagnosis && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {diagnosis.cards.map((card) => {
+                      const style = STATUS_STYLE[card.status];
+                      const meta = {
+                        tren: {
+                          icon: <TrendingUp size={20} />,
+                          value: shortOf(TREND_OPTIONS, data.trendAnswer),
+                          poin: results.details.trend,
+                          max: 1,
+                        },
+                        konsentrasi: {
+                          icon: <AlertCircle size={20} />,
+                          value: shortOf(
+                            CONCENTRATION_OPTIONS,
+                            data.concentrationAnswer,
+                          ),
+                          poin: results.details.concentration,
+                          max: 1,
+                        },
+                        profit: {
+                          icon: <DollarSign size={20} />,
+                          value: shortOf(MARGIN_OPTIONS, data.marginAnswer),
+                          poin: results.details.profitability,
+                          max: 1.5,
+                        },
+                        iklan: {
+                          icon: <BarChart3 size={20} />,
+                          value: !results.marginKnown || !results.roasKnown
                             ? "Tidak Diketahui"
-                            : results.details.adPerformance >= 1.5
+                            : card.status === "hijau"
                               ? "Efisien"
-                              : results.details.adPerformance > 0
+                              : card.status === "kuning"
                                 ? "Borderline"
-                                : "Tidak Efisien"}
-                      </div>
-                      <div className="text-sm text-slate-500 mb-1">
-                        +{results.details.adPerformance} poin
-                      </div>
-                    </div>
-                    <p className="text-xs text-slate-500 mb-2">
-                      {results.marginKnown && results.roasKnown
-                        ? `${roasLabel} ${shortOf(ROAS_OPTIONS, data.roasAnswer)} dibanding ambang BEP`
-                        : `Dinilai dari perbandingan ${roasLabel} dengan BEP`}
-                    </p>
-                    <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                      <div
-                        className="bg-indigo-600 h-full transition-all"
-                        style={{
-                          width: `${(results.details.adPerformance / 1.5) * 100}%`,
-                        }}
-                      ></div>
-                    </div>
+                                : "Di Bawah BEP",
+                          poin: results.details.adPerformance,
+                          max: 1.5,
+                        },
+                      }[card.key];
+
+                      return (
+                        <div key={card.key} className="card p-6">
+                          <div className="flex items-start justify-between gap-2 mb-3">
+                            <div className="flex items-center gap-2 text-slate-900">
+                              <span className="text-indigo-600">
+                                {meta.icon}
+                              </span>
+                              <h3 className="font-bold">{card.title}</h3>
+                            </div>
+                            <span
+                              className={`shrink-0 text-[11px] font-black uppercase tracking-wider border rounded-full px-2.5 py-1 ${style.chip}`}
+                            >
+                              {style.label}
+                            </span>
+                          </div>
+
+                          <div className="flex items-end gap-2 mb-2">
+                            <div className="text-2xl md:text-3xl font-bold">
+                              {meta.value || "-"}
+                            </div>
+                            <div className="text-sm text-slate-500 mb-1">
+                              +{meta.poin} poin
+                            </div>
+                          </div>
+
+                          <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mb-4">
+                            <div
+                              className={`${style.bar} h-full transition-all`}
+                              style={{
+                                width: `${(meta.poin / meta.max) * 100}%`,
+                              }}
+                            ></div>
+                          </div>
+
+                          <p className="text-sm text-slate-700 font-medium">
+                            <span className="font-black text-slate-900">
+                              Langkah pertama:{" "}
+                            </span>
+                            {card.step}
+                          </p>
+                        </div>
+                      );
+                    })}
                   </div>
-                </div>
+                )}
 
                 {results.bepText && (
                   <div className="card p-6 bg-indigo-50/60 border-indigo-200">
                     <div className="flex items-center gap-2 mb-2 text-indigo-700">
                       <Zap size={20} />
                       <h3 className="font-bold">
-                        Estimasi BEP {roasLabel} Anda: {results.bepText}
+                        Estimasi BEP {roasLabel} kamu: {results.bepText}
                       </h3>
                     </div>
                     <p className="text-sm text-indigo-900/80 font-medium">
                       Dengan margin{" "}
-                      {shortOf(MARGIN_OPTIONS, data.marginAnswer)}, iklan Anda
-                      baru benar-benar untung jika {roasLabel} berada di atas
-                      rentang tersebut (di luar biaya operasional).{" "}
+                      {shortOf(MARGIN_OPTIONS, data.marginAnswer)}, iklanmu baru
+                      benar-benar untung kalau {roasLabel} ada di atas rentang
+                      tersebut (di luar biaya operasional).{" "}
                       {results.roasKnown
                         ? results.details.adPerformance >= 1.5
-                          ? `${roasLabel} Anda saat ini sudah di atas ambang — pertahankan!`
+                          ? `${roasLabel} kamu sudah di atas ambang — pertahankan!`
                           : results.details.adPerformance > 0
-                            ? `${roasLabel} Anda berada tepat di sekitar ambang — rawan boncos, perlu dioptimasi.`
-                            : `${roasLabel} Anda masih di bawah ambang — iklan Anda kemungkinan besar boncos.`
+                            ? `${roasLabel} kamu pas di sekitar ambang — rawan boncos, perlu dioptimasi.`
+                            : `${roasLabel} kamu masih di bawah ambang — iklanmu kemungkinan besar boncos.`
                         : ""}
                     </p>
                   </div>
                 )}
 
+
+                <div className="card p-5 md:p-6">
+                  <div className="flex items-start gap-2 mb-1 text-indigo-600">
+                    <DollarSign size={22} className="shrink-0 mt-0.5" />
+                    <h3 className="font-black text-slate-900 text-base md:text-lg">
+                      Mau lihat estimasi untung atau rugi iklanmu dalam Rupiah?
+                    </h3>
+                  </div>
+                  <p className="text-sm text-slate-600 font-medium mb-4 ml-7">
+                    Berapa budget iklan tokomu per bulan?
+                  </p>
+
+                  <div className="flex flex-wrap gap-2">
+                    {BUDGET_OPTIONS.map((opt) => {
+                      const selected = data.adBudgetAnswer === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => handleBudgetSelect(opt.id)}
+                          className={`px-4 py-2.5 rounded-full border-2 text-sm font-bold transition-all ${
+                            selected
+                              ? "border-indigo-600 bg-indigo-600 text-white shadow-md shadow-indigo-200"
+                              : "border-slate-200 bg-white text-slate-700 hover:border-indigo-400 hover:bg-indigo-50"
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {adResult && (
+                    <div className="mt-5">
+                      {adResult.kind === "tidak_diketahui" ? (
+                        <p className="text-sm font-semibold text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                          Estimasi tidak bisa dihitung karena ROAS atau margin
+                          tokomu belum diketahui. Ini justru alasan terkuat untuk
+                          mengeceknya.
+                        </p>
+                      ) : adResult.kind === "tidak_beriklan" ? (
+                        <p className="text-sm font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+                          Kamu belum beriklan.
+                          {results.bepText
+                            ? ` Dengan margin ${shortOf(MARGIN_OPTIONS, data.marginAnswer)}, iklanmu baru untung kalau ${roasLabel} di atas ${results.bepText}.`
+                            : ""}
+                        </p>
+                      ) : (
+                        <div
+                          className={`rounded-xl px-4 py-4 border ${
+                            adResult.kind === "rugi"
+                              ? "bg-rose-50 border-rose-200"
+                              : adResult.kind === "untung"
+                                ? "bg-emerald-50 border-emerald-200"
+                                : "bg-amber-50 border-amber-200"
+                          }`}
+                        >
+                          <p
+                            className={`text-base md:text-lg font-black ${
+                              adResult.kind === "rugi"
+                                ? "text-rose-700"
+                                : adResult.kind === "untung"
+                                  ? "text-emerald-700"
+                                  : "text-amber-800"
+                            }`}
+                          >
+                            {adResult.teks}
+                          </p>
+                        </div>
+                      )}
+                      <p className="mt-3 text-xs text-slate-500 font-medium">
+                        Estimasi kasar dari jawabanmu, memakai margin dan
+                        {" "}{roasLabel} produk terlaris. Belum termasuk biaya
+                        operasional.
+                      </p>
+                    </div>
+                  )}
+                </div>
 
                 <div className="flex flex-col items-center gap-3 pt-2">
                   <p className="text-slate-600 font-semibold text-center text-sm md:text-base">
