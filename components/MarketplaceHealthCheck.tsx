@@ -521,14 +521,14 @@ function buildDiagnosis(
       key: "profit",
       title: "Profitabilitas Produk",
       status: "merah",
-      step: "Naikkan harga jual atau tekan HPP produk terlarismu. Dengan margin di bawah 5%, hampir semua biaya tambahan langsung membuat order rugi.",
+      step: "Naikkan harga jual atau tekan HPP produk terlarismu. Dengan margin di bawah 5%, hampir semua biaya tambahan langsung membuat bisnismu rugi.",
     };
   else if (m === 2)
     profit = {
       key: "profit",
       title: "Profitabilitas Produk",
       status: "merah",
-      step: "Hitung ulang semua potongan di tiap penjualan: biaya platform, ongkir, dan promo. Dengan margin 5–10%, selisih kecil saja bisa membuat order jadi rugi.",
+      step: "Hitung ulang harga jual dan semua potongan di tiap produk dan penjualan. Dengan margin 5–10%, kesalahan hitung kecil saja dapat membuat bisnismu jadi rugi.",
     };
   else if (m === 3)
     profit = {
@@ -576,7 +576,7 @@ function buildDiagnosis(
       key: "iklan",
       title: "Efisiensi Iklan",
       status: "merah",
-      step: `Turunkan biaya iklan dengan ${roasLabel} di bawah ${bep} atau sesuaikan ${roasLabel}-nya agar di atas ${bep}.`,
+      step: `Turunkan biaya iklan yang ${roasLabel} nya di bawah ${bep} atau sesuaikan ${roasLabel}-nya agar di atas ${bep}.`,
     };
 
   const cards: DiagCard[] = [tren, konsentrasi, profit, iklan];
@@ -612,7 +612,7 @@ function buildDiagnosis(
   let warning: string | null = null;
   if (profit.status === "merah" && iklan.status === "merah" && !marginUnknown && !roasUnknown)
     warning =
-      "Margin tipis dan " + roasLabel + " di bawah BEP: iklanmu kemungkinan besar sedang menggerus laba.";
+      "Margin tipis dan " + roasLabel + " di bawah BEP: iklanmu kemungkinan besar sedang menggerus profit.";
   else if (d.trendAnswer === "konsisten_turun" && d.concentrationAnswer === "di_atas_75")
     warning =
       "Omzet turun dan bergantung pada sedikit produk. Kalau satu produk bermasalah, penurunannya bisa jauh lebih cepat.";
