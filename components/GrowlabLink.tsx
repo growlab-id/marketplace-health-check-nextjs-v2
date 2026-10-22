@@ -63,9 +63,10 @@ export default function GrowlabLink() {
 
   return (
     <div className="w-full">
-      <div className="max-w-4xl mx-auto px-4 md:px-8 pt-3">
-        {/* Tinggi dikunci agar kedua versi teks tidak menggeser tata letak. */}
-        <div className="h-10 flex items-center">
+      <div className="max-w-4xl mx-auto px-4 md:px-8 pt-2">
+        {/* Tinggi dikunci agar kedua versi teks tidak menggeser tata letak.
+            h-8 cukup untuk satu baris, juga untuk dua baris di layar 320 px. */}
+        <div className="h-8 flex items-center">
           <a
             href={href}
             className="inline-flex items-center text-[11px] md:text-xs font-semibold text-slate-500 hover:text-indigo-600 transition-colors leading-tight"
