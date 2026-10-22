@@ -1105,7 +1105,7 @@ export default function MarketplaceHealthCheck() {
 
       <div className="max-w-4xl mx-auto relative">
         <header
-          className={`mb-8 text-center transition-all duration-500 ${step === STEP.PLATFORM ? "mt-6 mb-10 md:mt-8 md:mb-10" : ""}`}
+          className={`mb-8 text-center transition-all duration-500 ${step === STEP.PLATFORM ? "mt-0 mb-8 md:mt-0 md:mb-8" : ""}`}
         >
       <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
