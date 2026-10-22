@@ -379,6 +379,16 @@ const STATUS_STYLE: Record<
   },
 };
 
+// Ambang ROAS (BEP) dalam satu angka bulat — dipakai di "langkah pertama"
+// supaya kalimatnya rapi. Kartu "Estimasi BEP" tetap menampilkan rentang.
+const BEP_STEP: Record<number, string> = {
+  5: "5",
+  4: "7",
+  3: "10",
+  2: "20",
+  1: "20",
+};
+
 const UNKNOWN_STEP =
   "Cek angka ini di dashboard seller center-mu hari ini, lalu ulangi analisis.";
 
@@ -398,7 +408,7 @@ function scoreLabel(score: number) {
   if (score >= 3)
     return {
       label: "Waspada",
-      line: "Tokomu berjalan, tapi ada risiko yang belum terlihat di angka omzet.",
+      line: "Tokomu berjalan, tapi ada risiko bisnis yang perlu diperhatikan.",
     };
   if (score >= 2)
     return {
@@ -433,7 +443,7 @@ function buildDiagnosis(
 ) {
   const m = MARGIN_RANK[d.marginAnswer ?? ""] ?? 0;
   const r = ROAS_RANK[d.roasAnswer ?? ""] ?? 0;
-  const bep = bepText ?? "BEP";
+  const bep = BEP_STEP[m] ?? "BEP";
 
   // --- Tren Omzet ---
   let tren: DiagCard;
@@ -449,7 +459,7 @@ function buildDiagnosis(
       key: "tren",
       title: "Tren Omzet",
       status: "kuning",
-      step: "Catat tanggal omzet tertinggi dan terendah 3 bulan terakhir. Kalau puncaknya selalu di tanggal campaign, tokomu bergantung pada campaign.",
+      step: "Bandingkan bulan dengan omzet tertinggi dan terendah, lalu cek apa yang berbeda: produknya, harganya, atau budget iklannya.",
     };
   else if (d.trendAnswer === "konsisten_turun")
     tren = {
@@ -487,7 +497,7 @@ function buildDiagnosis(
       key: "konsentrasi",
       title: "Ketergantungan Produk",
       status: "merah",
-      step: "Pilih satu produk keempat dengan rating bagus dan mulai beri porsi iklan kecil minggu ini.",
+      step: "Tentukan 1 produk lain yang paling potensial jadi andalan berikutnya, lalu mulai dorong penjualannya bulan ini.",
     };
   else
     konsentrasi = {
@@ -511,28 +521,31 @@ function buildDiagnosis(
       key: "profit",
       title: "Profitabilitas Produk",
       status: "merah",
-      step: "Hitung ulang batas diskon produk terlarismu. Diskon campaign tidak boleh melebihi marginmu, atau setiap order justru rugi.",
+      step: "Naikkan harga jual atau tekan HPP produk terlarismu. Dengan margin di bawah 5%, hampir semua biaya tambahan langsung membuat order rugi.",
     };
   else if (m === 2)
     profit = {
       key: "profit",
       title: "Profitabilitas Produk",
       status: "merah",
-      step: "Dengan margin 5–10%, satu diskon campaign 8% saja sudah cukup membuat order rugi. Hitung ulang batas diskonmu.",
+      step: "Hitung ulang semua potongan di tiap penjualan: biaya platform, ongkir, dan promo. Dengan margin 5–10%, selisih kecil saja bisa membuat order jadi rugi.",
     };
   else if (m === 3)
     profit = {
       key: "profit",
       title: "Profitabilitas Produk",
       status: "kuning",
-      step: "Cek biaya yang masih bisa ditekan: subsidi ongkir, voucher toko, atau biaya kemasan.",
+      step: `Cek biaya yang masih bisa dikurangi atau pastikan ${roasLabel} di atas 10.`,
     };
   else
     profit = {
       key: "profit",
       title: "Profitabilitas Produk",
       status: "hijau",
-      step: `Marginmu punya ruang untuk menaikkan iklan. Pastikan ${roasLabel} tetap di atas ${bep}.`,
+      step:
+        m === 5
+          ? `Marginmu punya ruang untuk menaikkan budget iklan. Pastikan ${roasLabel} tetap di atas 5.`
+          : `Marginmu punya ruang untuk menaikkan budget iklan. Pastikan ${roasLabel} di atas 7.`,
     };
 
   // --- Efisiensi Iklan (m + r > 6 aman, = 6 borderline, < 6 di bawah BEP) ---
@@ -549,21 +562,21 @@ function buildDiagnosis(
       key: "iklan",
       title: "Efisiensi Iklan",
       status: "hijau",
-      step: `Naikkan budget bertahap, paling banyak 20% per minggu, sambil memantau ${roasLabel}.`,
+      step: `Naikkan budget iklan bertahap, paling banyak 20% per minggu, sambil memantau ${roasLabel}.`,
     };
   else if (m + r === 6)
     iklan = {
       key: "iklan",
       title: "Efisiensi Iklan",
       status: "kuning",
-      step: `Pisahkan kampanye dengan ${roasLabel} di atas dan di bawah ${bep}, lalu pindahkan budget ke yang di atas.`,
+      step: `Pisahkan iklan dengan ${roasLabel} di atas dan di bawah ${bep}, lalu pindahkan budget iklan ke yang di atas.`,
     };
   else
     iklan = {
       key: "iklan",
       title: "Efisiensi Iklan",
       status: "merah",
-      step: `Turunkan atau hentikan kampanye dengan ${roasLabel} di bawah ${bep} mulai hari ini.`,
+      step: `Turunkan biaya iklan dengan ${roasLabel} di bawah ${bep} atau sesuaikan ${roasLabel}-nya agar di atas ${bep}.`,
     };
 
   const cards: DiagCard[] = [tren, konsentrasi, profit, iklan];
@@ -605,10 +618,10 @@ function buildDiagnosis(
       "Omzet turun dan bergantung pada sedikit produk. Kalau satu produk bermasalah, penurunannya bisa jauh lebih cepat.";
   else if (m > 0 && m <= 2 && omzetBesar)
     warning =
-      "Omzet besar dengan margin tipis: satu campaign yang salah bisa menghapus laba sebulan.";
+      "Omzet besar dengan margin tipis: satu aktivitas marketing atau penyesuaian harga jual yang salah bisa membuat keuntunganmu sebulan hilang.";
   else if (unknownCount >= 2)
     warning =
-      "Kamu mengelola toko tanpa melihat angka kuncinya. Ini risiko terbesar tokomu saat ini.";
+      "Kamu mengelola toko online tanpa melihat data-data penting. Ini risiko terbesar bisnismu saat ini.";
 
   return { cards, biggest, warning, allGreen };
 }
