@@ -67,8 +67,9 @@ export default function RootLayout({
             </noscript>
           </>
         )}
-        <GrowlabLink />
+        <GrowlabLink position="top" />
         {children}
+        <GrowlabLink position="bottom" />
       </body>
     </html>
   );
