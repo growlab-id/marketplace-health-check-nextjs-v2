@@ -1,10 +1,18 @@
 import type { Metadata } from "next";
 import Script from "next/script";
+import GrowlabLink from "@/components/GrowlabLink";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  // Dasar untuk semua URL absolut di metadata (termasuk canonical).
+  metadataBase: new URL("https://marketplace-health.growlab.id"),
   title: "Marketplace Health Check - Growlab Tools",
   description: "Dapatkan skor kesehatan toko Anda secara cepat dan akurat berdasarkan performa toko Anda",
+  // Canonical selalu menunjuk alamat bersih tanpa parameter pelacak
+  // (utm_*, fbclid, gclid). Halaman lain cukup menimpa nilai ini.
+  alternates: {
+    canonical: "https://marketplace-health.growlab.id/",
+  },
 };
 
 const FB_PIXEL_ID = process.env.NEXT_PUBLIC_FB_PIXEL_ID;
@@ -59,6 +67,7 @@ export default function RootLayout({
             </noscript>
           </>
         )}
+        <GrowlabLink />
         {children}
       </body>
     </html>
